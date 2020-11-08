@@ -3513,7 +3513,36 @@ struct Thing *get_creature_of_model_training_at_subtile_and_owned_by(MapSubtlCoo
 
 struct Thing *get_nearest_object_at_position(MapSubtlCoord stl_x, MapSubtlCoord stl_y)
 {
-  return _DK_get_nearest_object_at_position(stl_x, stl_y);
+  // return _DK_get_nearest_object_at_position(stl_x, stl_y);
+  struct Thing* result = NULL;
+  long OldDistance = 2147483647;
+  MapCoordDelta NewDistance;
+  MapSubtlCoord x, y;
+  for (y = stl_y - 2; y < stl_y + 3; y++)
+  {
+    if ( (y >= 0) && (y < 256) )
+    {
+        for (x = stl_x - 2; x < stl_x + 3; x++)
+        {
+            if ( (x >= 0) && (x < 256) )
+            {
+                struct Thing* thing = get_object_at_subtile_of_model_and_owned_by(x, y, -1, -1);
+                {
+                    if (thing_is_object(thing))
+                    {
+                        NewDistance = get_2d_box_distance_xy(stl_x, stl_y, thing->mappos.x.stl.num, thing->mappos.y.stl.num);
+                        if (NewDistance < OldDistance)
+                        {
+                            OldDistance = NewDistance;
+                            result = thing;
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+  return result;
 }
 
 void remove_dead_creatures_from_slab(MapSlabCoord slb_x, MapSlabCoord slb_y)
