@@ -3518,11 +3518,11 @@ struct Thing *get_nearest_object_at_position(MapSubtlCoord stl_x, MapSubtlCoord 
   long OldDistance = 2147483647;
   MapCoordDelta NewDistance;
   MapSubtlCoord x, y;
-  for (y = stl_y - 2; y < stl_y + 3; y++)
+  for (y = stl_y - 1; y < stl_y + 2; y++)
   {
     if ( (y >= 0) && (y < 256) )
     {
-        for (x = stl_x - 2; x < stl_x + 3; x++)
+        for (x = stl_x - 1; x < stl_x + 2; x++)
         {
             if ( (x >= 0) && (x < 256) )
             {
