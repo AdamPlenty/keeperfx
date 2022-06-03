@@ -1941,16 +1941,8 @@ CreatureJob get_job_for_subtile(const struct Thing *creatng, MapSubtlCoord stl_x
     RoomKind rkind;
     struct Room* room = get_room_thing_is_on(creatng);
     if (!room_is_invalid(room)) {
-        if ( ( (room_role_matches(room->kind, RoRoF_Prison)) || (room_role_matches(room->kind, RoRoF_Torture)) || (room_role_matches(room->kind, RoRoF_CrSacrifice)) ) || (room->owner == creatng->owner) )
-        {
-            required_kind_flags |= JoKF_AssignAreaWithinRoom;
-            rkind = room->kind;
-        }
-        else
-        {
-            required_kind_flags |= JoKF_AssignAreaOutsideRoom;
-            rkind = RoK_NONE;
-        }
+        required_kind_flags |= JoKF_AssignAreaWithinRoom;
+        rkind = room->kind;
     } else {
         required_kind_flags |= JoKF_AssignAreaOutsideRoom;
         rkind = RoK_NONE;
