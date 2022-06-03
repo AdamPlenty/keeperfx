@@ -260,7 +260,10 @@ void anger_set_creature_anger_f(struct Thing *creatng, long annoy_lv, AnnoyMotiv
         annoy_lv = 65534;
     }
     TbBool was_angry = ((cctrl->mood_flags & CCMoo_Angry) != 0);
-    cctrl->annoyance_level[reason] = annoy_lv;
+    if ( ((cctrl->spell_flags & CSAfF_MadKilling) == 0) || (annoy_lv > cctrl->annoyance_level[reason]) )
+    {
+        cctrl->annoyance_level[reason] = annoy_lv;
+    }
     anger_calculate_creature_is_angry(creatng);
     struct Dungeon* dungeon = get_players_num_dungeon(creatng->owner);
     if (dungeon_invalid(dungeon)) {
