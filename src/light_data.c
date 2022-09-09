@@ -1578,7 +1578,6 @@ static char light_render_light(struct Light* lgt)
   int stl_y;
   int v30;
   int v31;
-  char is_dynamic;
   int v33;
 
   radius = lgt->radius;
@@ -1595,7 +1594,6 @@ static char light_render_light(struct Light* lgt)
     v22 = v3;
   }
   v4 = radius;
-  is_dynamic = lgt->flags & LgtF_Dynamic;
   if ( is_dynamic )
   {
     if ( radius < lgt->min_radius << 8 )
