@@ -1139,9 +1139,14 @@ void redraw_display(void)
           long pos_y = 16 * units_per_pixel / 16;
           lbDisplay.DrawFlags = Lb_TEXT_HALIGN_CENTER;
           long h = LbTextLineHeight() * units_per_pixel / 16;
+          if (MyScreenHeight < 400)
+          {
+              w *= 2;
+              h *= 3;
+          }
           LbTextSetWindow(pos_x, pos_y, w, h);
           draw_slab64k(pos_x, pos_y, units_per_pixel, w, h);
-          LbTextDrawResized(0/pixel_size, 0/pixel_size, units_per_pixel, text);
+          LbTextDrawResized(0/pixel_size, 0/pixel_size, tx_units_per_px, text);
           LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
     }
     if (game.armageddon_cast_turn != 0)
