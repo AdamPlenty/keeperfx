@@ -1628,6 +1628,11 @@ void gui_area_instance_button(struct GuiButton *gbtn)
     long spkind = inst_inf->func_params[0];
     if (!creature_instance_has_reset(ctrltng, curbtn_inst_id) || ((spkind != 0) && thing_affected_by_spell(ctrltng, spkind)))
       spr_idx++;
+    if (MyScreenHeight < 400)
+    {
+        struct TbSprite* spr = &gui_panel_sprites[488];
+        ps_units_per_px = (22 * units_per_pixel) / spr->SHeight;
+    }
     draw_gui_panel_sprite_left(gbtn->scr_pos_x - 4*units_per_px/16, gbtn->scr_pos_y - 8*units_per_px/16, ps_units_per_px, spr_idx);
 }
 
