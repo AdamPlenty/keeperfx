@@ -1841,7 +1841,13 @@ void gui_area_stat_button(struct GuiButton *gbtn)
     if (thing->class_id == TCls_Creature)
     {
         const char* text = creature_statistic_text(thing, (long)gbtn->content);
-        draw_gui_panel_sprite_left(gbtn->scr_pos_x - 6*ps_units_per_px/16, gbtn->scr_pos_y - 12*ps_units_per_px/16, ps_units_per_px, gbtn->sprite_idx);
+        int x = gbtn->scr_pos_x - 6*ps_units_per_px/16;
+        int y = gbtn->scr_pos_y - 12*ps_units_per_px/16;
+        if (MyScreenHeight < 400)
+        {
+            y += (gbtn->height / 2);
+        }
+        draw_gui_panel_sprite_left(x, y, ps_units_per_px, gbtn->sprite_idx);
         draw_button_string(gbtn, 60, text);
     }
 }

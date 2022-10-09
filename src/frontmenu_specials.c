@@ -190,7 +190,7 @@ void draw_resurrect_creature(struct GuiButton *gbtn)
             adjust = (ratio >= 3) ? 0 : 1;
             if (ratio > 2)
             {
-                ratio = 2;
+                ratio = (MyScreenHeight >= 400) ? 2 : 1;
             }
         }
         int w = ((spr->SWidth -  10) + (4 * ratio)) + ((4 * ((MyScreenWidth / 320) - adjust)) * ratio);
@@ -307,7 +307,7 @@ void draw_transfer_creature(struct GuiButton *gbtn)
             adjust = (ratio >= 3) ? 0 : 1;
             if (ratio > 2)
             {
-                ratio = 2;
+                ratio = (MyScreenHeight >= 400) ? 2 : 1;
             }
         }
         int w = ((spr->SWidth -  10) + (4 * ratio)) + ((4 * ((MyScreenWidth / 320) - adjust)) * ratio);
