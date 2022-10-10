@@ -1116,24 +1116,26 @@ void draw_slider64k(long scr_x, long scr_y, int units_per_px, long width)
 {
     draw_bar64k(scr_x, scr_y, units_per_px, width);
     // Inner size
-    int base_x;
-    int base_y;
-    int base_w;
-    base_w = width - 64*units_per_px/16;
-    base_x = scr_x + 32*units_per_px/16;
-    base_y = scr_y + 10*units_per_px/16;
-    if (base_w < 72*units_per_px/16) {
-        ERRORLOG("Bar is too small");
-        return;
+    ScreenCoord x = scr_x;
+    ScreenCoord y = scr_y;
+    TbBool low_res = (MyScreenHeight < 400);
+    if (low_res)
+    {
+        x -= 16;
+        y -= 5;
     }
-    int cur_x;
-    int cur_y;
-    cur_x = base_x;
-    cur_y = base_y;
-    int end_x;
-    end_x = base_x + base_w - 64*units_per_px/16;
-    struct TbSprite *spr;
-    spr = &button_sprite[GBS_borders_bar_std_l];
+    int base_x = x + 32*units_per_px/16;
+    int base_y = y + 10*units_per_px/16;
+    int base_w = width - 64*units_per_px/16;
+    int end_x = base_x + base_w - 64*units_per_px/16;
+    if (low_res)
+    {
+        end_x += 32;
+    }
+    int cur_x = base_x;
+    int cur_y = base_y;
+    // int end_x = base_x + base_w - 64*units_per_px/16;
+    struct TbSprite *spr = &button_sprite[GBS_borders_bar_std_l];
     LbSpriteDrawResized(cur_x, cur_y, units_per_px, spr);
     cur_x += spr->SWidth*units_per_px/16;
     spr = &button_sprite[GBS_borders_bar_std_c];
