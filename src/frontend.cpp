@@ -1154,13 +1154,15 @@ void gui_area_slider(struct GuiButton *gbtn)
     if ((gbtn->flags & LbBtnF_Enabled) == 0) {
         return;
     }
-    int units_per_px;
-    units_per_px = (gbtn->height*16 + 30/2) / 30;
-    int bs_units_per_px;
-    bs_units_per_px = simple_button_sprite_height_units_per_px(gbtn, GBS_frontend_button_std_c, 100);
-    draw_slider64k(gbtn->scr_pos_x, gbtn->scr_pos_y, bs_units_per_px, gbtn->width);
-    int shift_x;
-    shift_x = (gbtn->width - 64*units_per_px/16) * gbtn->slide_val >> 8;
+    int units_per_px = (gbtn->height*16 + 30/2) / 30;
+    int bs_units_per_px = simple_button_sprite_height_units_per_px(gbtn, GBS_frontend_button_std_c, 100);
+    int bar_width = gbtn->width;
+    if (MyScreenHeight < 400)
+    {
+        bar_width += 32;
+    }
+    draw_slider64k(gbtn->scr_pos_x, gbtn->scr_pos_y, bs_units_per_px, bar_width);
+    int shift_x = (gbtn->width - 64*units_per_px/16) * gbtn->slide_val >> 8;
     struct TbSprite *spr;
     if (gbtn->flags != 0) {
         spr = &button_sprite[GBS_guisymbols_jewel_on];
