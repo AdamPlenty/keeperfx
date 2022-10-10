@@ -85,11 +85,10 @@ static void draw_creature_view_icons(struct Thing* creatng)
     ScreenCoord y;
     struct TbSprite* spr;
     int ps_units_per_px;
-    TbBool low_res = (MyScreenHeight < 400);
     {
         spr = &gui_panel_sprites[488];
         ps_units_per_px = (22 * units_per_pixel) / spr->SHeight;
-        y = MyScreenHeight - scale_value_by_horizontal_resolution(spr->SHeight * ((low_res) ? 4 : 2));
+        y = MyScreenHeight - scale_ui_value_lofi(spr->SHeight * 2);
     }
     struct CreatureControl* cctrl = creature_control_get_from_thing(creatng);
     for (int Spell = SplK_Freeze; Spell < SplK_TimeBomb; Spell++)
@@ -103,8 +102,7 @@ static void draw_creature_view_icons(struct Thing* creatng)
                 spridx++;
             }
             draw_gui_panel_sprite_left(x, y, ps_units_per_px, spridx);
-            int width = (low_res) ? (spr->SWidth * 2) : spr->SWidth;
-            x += scale_value_by_horizontal_resolution(width);
+            x += scale_ui_value_lofi(spr->SWidth);
         }
     }
     if ( (cctrl->dragtng_idx != 0) && ((creatng->alloc_flags & TAlF_IsDragged) == 0) )
