@@ -226,10 +226,11 @@ void draw_battle_head(struct Thing *thing, long scr_x, long scr_y, int units_per
     // Draw experience level
     spr = &button_sprite[GBS_creature_flower_level_01];
     int bs_units_per_px = (17 * units_per_px + spr->SHeight / 2) / spr->SHeight;
-    curscr_y = (scr_y - ((spr->SHeight*bs_units_per_px/16) >> 1));
-    curscr_x = (scr_x - ((spr->SWidth*bs_units_per_px/16) >> 1));
+    TbBool low_res = (MyScreenHeight >= 400);
+    curscr_y = (scr_y - ((spr->SHeight*bs_units_per_px/16) >> (unsigned char)low_res));
+    curscr_x = (scr_x - ((spr->SWidth*bs_units_per_px/16) >> (unsigned char)low_res));
     spr = &button_sprite[GBS_creature_flower_level_01 + cctrl->explevel];
-    LbSpriteDrawResized(curscr_x, curscr_y, bs_units_per_px, spr);
+    LbSpriteDrawResized(curscr_x, curscr_y, ps_units_per_px, spr);
 }
 
 void gui_area_friendly_battlers(struct GuiButton *gbtn)
