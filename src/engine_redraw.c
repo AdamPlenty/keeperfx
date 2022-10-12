@@ -1163,11 +1163,16 @@ void redraw_display(void)
       text = buf_sprintf(" %s %03d", get_string(get_power_name_strindex(PwrK_ARMAGEDDON)), i/2); // Armageddon message
       i = LbTextCharWidth(' ')*units_per_pixel/16;
       long w = LbTextStringWidth(text) * units_per_pixel / 16 + 6 * i;
-      long pos_x = MyScreenWidth - w - 16 * units_per_pixel / 16;
-      long pos_y = 16 * units_per_pixel / 16;
       i = LbTextLineHeight()*units_per_pixel/16;
       lbDisplay.DrawFlags = Lb_TEXT_HALIGN_CENTER;
       long h = pixel_size * i + pixel_size * i / 2;
+      if (MyScreenHeight < 400)
+      {
+          w *= 2;
+          h *= 2;
+      }
+      long pos_x = MyScreenWidth - w - 16 * units_per_pixel / 16;
+      long pos_y = 16 * units_per_pixel / 16;
       LbTextSetWindow(pos_x, pos_y, w, h);
       draw_slab64k(pos_x, pos_y, units_per_pixel, w, h);
       LbTextDrawResized(0/pixel_size, 0/pixel_size, tx_units_per_px, text);
