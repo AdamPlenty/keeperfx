@@ -16,6 +16,7 @@
  *     (at your option) any later version.
  */
 /******************************************************************************/
+#include "pre_inc.h"
 #include "gui_msgs.h"
 #include <stdarg.h>
 
@@ -31,6 +32,7 @@
 #include "sprites.h"
 
 #include "keeperfx.hpp"
+#include "post_inc.h"
 
 /******************************************************************************/
 
@@ -38,12 +40,13 @@ void message_draw(void)
 {
     SYNCDBG(7,"Starting");
     LbTextSetFont(winfont);
-    int tx_units_per_px = (22 * units_per_pixel) / LbTextLineHeight();
     int ps_units_per_px;
     {
         struct TbSprite* spr = &gui_panel_sprites[488];
         ps_units_per_px = (22 * units_per_pixel) / spr->SHeight;
     }
+    TbBool low_res = (MyScreenHeight < 400);
+    int tx_units_per_px = ( (low_res) && (dbc_language > 0) ) ? ps_units_per_px : (22 * units_per_pixel) / LbTextLineHeight();
     int h = LbTextLineHeight();
     long y = 28 * units_per_pixel / 16;
     TbBool low_res = (MyScreenHeight < 400);

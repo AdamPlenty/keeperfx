@@ -16,6 +16,7 @@
  *     (at your option) any later version.
  */
 /******************************************************************************/
+#include "pre_inc.h"
 #include "engine_redraw.h"
 
 #include "globals.h"
@@ -62,6 +63,7 @@
 #include "packets.h"
 
 #include "keeperfx.hpp"
+#include "post_inc.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -1068,7 +1070,7 @@ void redraw_display(void)
     //LbTextSetWindow(0, 0, MyScreenWidth, MyScreenHeight);
     LbTextSetFont(winfont);
     lbDisplay.DrawFlags &= ~Lb_TEXT_ONE_COLOR;
-    int tx_units_per_px = (22 * units_per_pixel) / LbTextLineHeight();
+    int tx_units_per_px = ( (MyScreenHeight < 400) && (dbc_language > 0) ) ? scale_ui_value(32) : (22 * units_per_pixel) / LbTextLineHeight();
     LbTextSetWindow(0, 0, MyScreenWidth, MyScreenHeight);
     if ((player->allocflags & PlaF_NewMPMessage) != 0)
     {
@@ -1137,12 +1139,20 @@ void redraw_display(void)
           long pos_y = 16 * units_per_pixel / 16;
           lbDisplay.DrawFlags = Lb_TEXT_HALIGN_CENTER;
           long h = LbTextLineHeight() * units_per_pixel / 16;
+          int text_w = w;
+          int text_x = pos_x;
           if (MyScreenHeight < 400)
           {
               w *= 2;
               h *= 3;
+              text_w = w;
+              if (dbc_language > 0)
+              {
+                  text_w += 32;
+                  text_x -= 12;
+              }
           }
-          LbTextSetWindow(pos_x, pos_y, w, h);
+          LbTextSetWindow(text_x, pos_y, text_w, h);
           draw_slab64k(pos_x, pos_y, units_per_pixel, w, h);
           LbTextDrawResized(0/pixel_size, 0/pixel_size, tx_units_per_px, text);
           LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
