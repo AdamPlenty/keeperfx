@@ -757,6 +757,8 @@ void draw_lightning(const struct Coord3d *pos1, const struct Coord3d *pos2, long
     int delta_x;
     int delta_y;
     int delta_z;
+    if (eeinterspace <= 0)
+        eeinterspace = 1;
     if (dist_x >= 0) {
         delta_x = eeinterspace;
     } else {
@@ -3918,6 +3920,7 @@ void game_loop(void)
       StopMusicPlayer();
       free_custom_music();
       free_sound_chunks();
+      memset(&game.loaded_sound,0,DISKPATH_SIZE * EXTERNAL_SOUNDS_COUNT+1);
       turn_off_all_menus();
       delete_all_structures();
       clear_mapwho();

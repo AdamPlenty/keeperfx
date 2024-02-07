@@ -33,7 +33,6 @@ extern "C" {
 #define MAGIC_ITEMS_MAX        255
 #define SPELL_MAX_LEVEL         8
 #define MAGIC_OVERCHARGE_LEVELS (SPELL_MAX_LEVEL+1)
-#define MAGIC_TYPES_COUNT      30
 #define POWER_TYPES_MAX      64
 
 enum SpellKinds {
@@ -116,7 +115,10 @@ enum PowerKinds {
     PwrK_PICKUPGOLD,
     PwrK_PICKUPFOOD,
     PwrK_REBOUND,
-    PwrK_FREEZE, // 24
+    PwrK_FREEZE,
+    PwrK_SLOW, // 25
+    PwrK_FLIGHT,
+    PwrK_VISION,
 };
 
 /** Contains properties of a shot model, to be stored in ShotConfigStats.
@@ -309,9 +311,8 @@ struct ShotConfigStats {
     EffectOrEffElModel effect_id;
     unsigned char fire_logic; // see enum ShotFireLogics
     unsigned char update_logic; // see enum ShotUpdateLogics
-    unsigned char effect_spacing;
+    unsigned short effect_spacing;
     unsigned char effect_amount;
-
 };
 
 typedef unsigned char (*Expand_Check_Func)(void);
@@ -373,6 +374,9 @@ struct SpellConfig {
     /** Sprite index of medium symbol icon representing the spell. */
     short medsym_sprite_idx;
     short cast_sound;
+    short crtr_summon_model;
+    short crtr_summon_level;
+    short crtr_summon_amount;
     short linked_power;
     short duration;
     short aura_effect;

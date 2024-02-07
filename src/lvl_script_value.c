@@ -184,6 +184,12 @@ TbResult script_use_power_on_creature(PlayerNumber plyr_idx, long crmodel, long 
         return magic_use_power_chicken(caster, thing, 0, 0, splevel, spell_flags);
       case PwrK_FREEZE:
         return magic_use_power_freeze(caster, thing, 0, 0, splevel, spell_flags);
+      case PwrK_SLOW:
+        return magic_use_power_slow(caster, thing, 0, 0, splevel, spell_flags);
+      case PwrK_FLIGHT:
+        return magic_use_power_flight(caster, thing, 0, 0, splevel, spell_flags);
+      case PwrK_VISION:
+        return magic_use_power_vision(caster, thing, 0, 0, splevel, spell_flags);
       case PwrK_SLAP:
         return magic_use_power_slap_thing(caster, thing, spell_flags);
       case PwrK_CALL2ARMS:
@@ -558,17 +564,6 @@ void script_process_value(unsigned long var_index, unsigned long plr_range_id, l
       break;
   case Cmd_TUTORIAL_FLASH_BUTTON:
       gui_set_button_flashing(val2, val3);
-      break;
-  case Cmd_SET_CREATURE_MAX_LEVEL:
-      for (i=plr_start; i < plr_end; i++)
-      {
-          dungeon = get_dungeon(i);
-          if (dungeon_invalid(dungeon))
-              continue;
-          if (val3 == -1)
-              val3 = CREATURE_MAX_LEVEL + 1;
-          dungeon->creature_max_level[val2%game.conf.crtr_conf.model_count] = val3;
-      }
       break;
   case Cmd_SET_CREATURE_HEALTH:
       change_max_health_of_creature_kind(val2, val3);
@@ -1016,7 +1011,15 @@ void script_process_value(unsigned long var_index, unsigned long plr_range_id, l
   case Cmd_RANDOMISE_FLAG:
       for (i=plr_start; i < plr_end; i++)
       {
-          set_variable(i, val4, val2, GAME_RANDOM(val3) + 1);
+          if (val3 == 0)
+          {
+              long current_flag_val = get_condition_value(i, val4, val2);
+              set_variable(i, val4, val2, GAME_RANDOM(current_flag_val) + 1);
+          }
+          else
+          {
+              set_variable(i, val4, val2, GAME_RANDOM(val3) + 1);
+          }
       }
       break;
   case Cmd_COMPUTE_FLAG:

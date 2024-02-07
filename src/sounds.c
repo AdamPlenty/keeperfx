@@ -651,7 +651,7 @@ void sound_reinit_after_load(void)
     ambient_sound_stop();
     init_messages();
     free_sound_chunks();
-    for (unsigned int sample = 0; sample < EXTERNAL_SOUNDS_COUNT; sample++)
+    for (unsigned int sample = 0; sample <= EXTERNAL_SOUNDS_COUNT; sample++)
     {
         char *sound = &game.loaded_sound[sample][0];
         if (sound[0] != '\0')
@@ -757,7 +757,7 @@ void update_first_person_object_ambience(struct Thing *thing)
              objtng = thing_get(objtng->next_of_class))
         {
             objst = get_object_model_stats(objtng->model);
-            if ((objst->fp_smpl_idx != 0) && !thing_is_in_limbo(objtng))
+            if ((objst->fp_smpl_idx != 0) && !thing_is_picked_up(objtng))
             {
                 new_distance = get_chessboard_distance(&thing->mappos, &objtng->mappos);
                 if (new_distance <= hearing_range)
@@ -837,13 +837,12 @@ void ShutDownSDLAudio()
 void free_sound_chunks()
 {
     Mix_HaltChannel(-1);
-    for (int i = 0; i < EXTERNAL_SOUNDS_COUNT; i++)
+    for (int i = 0; i <= EXTERNAL_SOUNDS_COUNT; i++)
     {
         if (Ext_Sounds[i] != NULL)
         {
             Mix_FreeChunk(Ext_Sounds[i]);
             Ext_Sounds[i] = NULL;
-            memset(game.loaded_sound[i],0,DISKPATH_SIZE);
         }
     }
     game.sounds_count = 0;
