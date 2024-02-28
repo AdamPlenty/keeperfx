@@ -23,7 +23,6 @@
 #include "globals.h"
 #include "bflib_basics.h"
 #include "bflib_sprfnt.h"
-#include "config_spritecolors.h"
 #include "creature_graphics.h"
 #include "creature_instances.h"
 #include "gui_draw.h"
@@ -73,7 +72,6 @@ void message_draw(void)
             TbBool IsKeeperSpell = false;
             TbBool IsQuery = false;
             TbBool NotPlayer = ((char)gameadd.messages[i].plyr_idx < 0);
-            PlayerNumber plyr_idx = gameadd.messages[i].plyr_idx;
             if (NotPlayer)
             {
                 IsCreature = ( ((char)gameadd.messages[i].plyr_idx >= -31) && ((char)gameadd.messages[i].plyr_idx <= -1) );
@@ -119,22 +117,24 @@ void message_draw(void)
             {
                 if (gameadd.messages[i].plyr_idx == game.hero_player_num)
                 {
-                    spr_idx = get_player_colored_icon_idx(GPS_plyrsym_symbol_player_red_std_b,game.hero_player_num);
+                    spr_idx = GPS_plyrsym_symbol_player_white_std;
                 }
                 else if (gameadd.messages[i].plyr_idx == game.neutral_player_num)
                 {
-                    spr_idx = get_player_colored_icon_idx(GPS_plyrsym_symbol_player_red_std_b,((game.play_gameturn >> 1) & 3));
-                    plyr_idx = 0;
+                    spr_idx = ((game.play_gameturn >> 1) & 3) + GPS_plyrsym_symbol_player_red_std_b;
                 }
                 else
                 {
-                    short base_icon_idx = (player_has_heart(gameadd.messages[i].plyr_idx)) ? GPS_plyrsym_symbol_player_red_std_b : GPS_plyrsym_symbol_player_red_dead;
-                    spr_idx = get_player_colored_icon_idx(base_icon_idx,gameadd.messages[i].plyr_idx);
+                    if (player_has_heart(gameadd.messages[i].plyr_idx)) {
+                        spr_idx = GPS_plyrsym_symbol_player_red_std_b + gameadd.messages[i].plyr_idx;
+                    } else {
+                        spr_idx = GPS_plyrsym_symbol_player_red_dead + gameadd.messages[i].plyr_idx;
+                    }
                 }
             }
             if (gameadd.messages[i].plyr_idx != 127)
             {
-                draw_gui_panel_sprite_left_player(x, y, ps_units_per_px, spr_idx, plyr_idx);
+                draw_gui_panel_sprite_left(x, y, ps_units_per_px, spr_idx);
             }
             y += (h*units_per_pixel/16) << (unsigned char)low_res;
             if (NotPlayer)
