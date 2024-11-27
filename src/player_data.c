@@ -303,6 +303,7 @@ void set_player_ally_locked(PlayerNumber plyr_idx, PlayerNumber ally_idx, TbBool
 void set_player_state(struct PlayerInfo *player, short nwrk_state, long chosen_kind)
 {
   SYNCDBG(6,"Player %d state %s to %s",(int)player->id_number,player_state_code_name(player->work_state),player_state_code_name(nwrk_state));
+  player->chosen_power_kind = 0; //Cleanup for spells. Traps, doors and rooms do not require cleanup.
   // Selecting the same state again - update only 2nd parameter
   if (player->work_state == nwrk_state)
   {
@@ -316,6 +317,26 @@ void set_player_state(struct PlayerInfo *player, short nwrk_state, long chosen_k
         break;
     case PSt_PlaceDoor:
         player->chosen_door_kind = chosen_kind;
+        break;
+    case PSt_CastPowerOnSubtile:
+    case PST_CastPowerOnTarget:
+    case PSt_CreateDigger:
+    case PSt_SightOfEvil:
+    case PSt_CallToArms:
+        player->chosen_power_kind = chosen_kind;
+        break;
+    case PSt_FreeCtrlPassngr:
+    case PSt_FreeCtrlDirect:
+        player->chosen_power_kind = PwrK_POSSESS;
+        break;
+    case PSt_FreeDestroyWalls:
+        player->chosen_power_kind = PwrK_DESTRWALLS;
+        break;
+    case PSt_FreeCastDisease:
+        player->chosen_power_kind = PwrK_DISEASE;
+        break;
+    case PSt_FreeTurnChicken:
+        player->chosen_power_kind = PwrK_CHICKEN;
         break;
     }
     return;
@@ -365,15 +386,34 @@ void set_player_state(struct PlayerInfo *player, short nwrk_state, long chosen_k
   case PSt_PlaceDoor:
       player->chosen_door_kind = chosen_kind;
       break;
+  case PSt_CastPowerOnSubtile:
+  case PST_CastPowerOnTarget:
+  case PSt_CallToArms:
+  case PSt_SightOfEvil:
+  case PSt_CreateDigger:
+      player->chosen_power_kind = chosen_kind;
+      break;
   case PSt_MkGoodCreatr:
-      clear_messages_from_player(MsgType_Player, player->cheatselection.chosen_player);
+        clear_messages_from_player(MsgType_Player, player->cheatselection.chosen_player);
         player->cheatselection.chosen_player = PLAYER_GOOD;
         break;
-    case PSt_MkBadCreatr:
-    case PSt_MkDigger:
-    clear_messages_from_player(MsgType_Player, player->cheatselection.chosen_player);
+  case PSt_MkBadCreatr:
+  case PSt_MkDigger:
+        clear_messages_from_player(MsgType_Player, player->cheatselection.chosen_player);
         player->cheatselection.chosen_player = player->id_number;
         break;
+  case PSt_FreeCtrlPassngr:
+  case PSt_FreeCtrlDirect:
+        player->chosen_power_kind = PwrK_POSSESS;
+        break;
+  case PSt_FreeDestroyWalls:
+      player->chosen_power_kind = PwrK_DESTRWALLS;
+      break;
+  case PSt_FreeCastDisease:
+      player->chosen_power_kind = PwrK_DISEASE;
+      break;
+  case PSt_FreeTurnChicken:
+      player->chosen_power_kind = PwrK_CHICKEN;
   default:
       break;
   }
