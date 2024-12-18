@@ -303,7 +303,6 @@ void set_player_ally_locked(PlayerNumber plyr_idx, PlayerNumber ally_idx, TbBool
 void set_player_state(struct PlayerInfo *player, short nwrk_state, long chosen_kind)
 {
   SYNCDBG(6,"Player %d state %s to %s",(int)player->id_number,player_state_code_name(player->work_state),player_state_code_name(nwrk_state));
-  player->chosen_power_kind = 0; //Cleanup for spells. Traps, doors and rooms do not require cleanup.
   // Selecting the same state again - update only 2nd parameter
   if (player->work_state == nwrk_state)
   {
@@ -325,6 +324,8 @@ void set_player_state(struct PlayerInfo *player, short nwrk_state, long chosen_k
     case PSt_CallToArms:
         player->chosen_power_kind = chosen_kind;
         break;
+    case PSt_CtrlDirect:
+    case PSt_CtrlPassngr:
     case PSt_FreeCtrlPassngr:
     case PSt_FreeCtrlDirect:
         player->chosen_power_kind = PwrK_POSSESS;
@@ -354,6 +355,7 @@ void set_player_state(struct PlayerInfo *player, short nwrk_state, long chosen_k
   {
   case PSt_CtrlDungeon:
       player->full_slab_cursor = 1;
+      player->chosen_power_kind = PwrK_None; //Cleanup for spells. Traps, doors and rooms do not require cleanup.
       break;
   case PSt_BuildRoom:
       player->chosen_room_kind = chosen_kind;
@@ -404,6 +406,8 @@ void set_player_state(struct PlayerInfo *player, short nwrk_state, long chosen_k
         break;
   case PSt_FreeCtrlPassngr:
   case PSt_FreeCtrlDirect:
+  case PSt_CtrlPassngr:
+  case PSt_CtrlDirect:
         player->chosen_power_kind = PwrK_POSSESS;
         break;
   case PSt_FreeDestroyWalls:
@@ -414,7 +418,8 @@ void set_player_state(struct PlayerInfo *player, short nwrk_state, long chosen_k
       break;
   case PSt_FreeTurnChicken:
       player->chosen_power_kind = PwrK_CHICKEN;
-  default:
+      break;
+   default:
       break;
   }
 }
