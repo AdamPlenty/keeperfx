@@ -111,14 +111,16 @@ struct TbSpriteSheet * swipe_sprites = NULL;
  * @note Dying creatures may return negative health, and in some rare cases creatures
  *  can have more health than their max.
  */
-int get_creature_health_permil(const struct Thing *thing)
+HitPoints get_creature_health_permil(const struct Thing *thing)
 {
     struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
     HitPoints health = thing->health * 1000;
     HitPoints max_health = cctrl->max_health;
     if (max_health < 1)
+    {
         max_health = 1;
-    return health/max_health;
+    }
+    return health / max_health;
 }
 
 TbBool thing_can_be_controlled_as_controller(struct Thing *thing)
@@ -1534,6 +1536,22 @@ void terminate_all_actives_spell_effects(struct Thing *thing)
     for (int i = 0; i < CREATURE_MAX_SPELLS_CASTED_AT; i++)
     {
         terminate_thing_spell_effect(thing, cctrl->casted_spells[i].spkind);
+    }
+}
+
+void terminate_all_actives_damage_over_time_spell_effects(struct Thing *thing)
+{
+    struct CreatureControl *cctrl = creature_control_get_from_thing(thing);
+    struct CastedSpellData *cspell;
+    struct SpellConfig *spconf;
+    for (int i = 0; i < CREATURE_MAX_SPELLS_CASTED_AT; i++)
+    {
+        cspell = &cctrl->casted_spells[i];
+        spconf = get_spell_config(cspell->spkind);
+        if (spconf->damage != 0)
+        {
+            terminate_thing_spell_effect(thing, cspell->spkind);
+        }
     }
 }
 
@@ -3247,114 +3265,121 @@ void delete_familiars_attached_to_creature(struct Thing* sumntng)
     }
 }
 
-struct Thing* kill_creature(struct Thing *creatng, struct Thing *killertng, PlayerNumber killer_plyr_idx, CrDeathFlags flags)
+struct Thing *kill_creature(struct Thing *creatng, struct Thing *killertng, PlayerNumber killer_plyr_idx, CrDeathFlags flags)
 {
-    SYNCDBG(18,"Starting");
+    SYNCDBG(18, "Starting");
     TRACE_THING(creatng);
     cleanup_creature_state_and_interactions(creatng);
     if (!thing_is_invalid(killertng))
     {
-        if (killertng->owner == game.neutral_player_num) {
-            flags &= ~CrDed_DiedInBattle;
+        if (killertng->owner == game.neutral_player_num)
+        {
+            clear_flag(flags, CrDed_DiedInBattle);
         }
     }
-    if (killer_plyr_idx == game.neutral_player_num) {
-        flags &= ~CrDed_DiedInBattle;
+    if (killer_plyr_idx == game.neutral_player_num)
+    {
+        clear_flag(flags, CrDed_DiedInBattle);
     }
-    if (!thing_exists(creatng)) {
+    if (!thing_exists(creatng))
+    {
         ERRORLOG("Tried to kill non-existing thing!");
         return INVALID_THING;
     }
-    // Remember if the creature is frozen.
-    TbBool frozen = creature_under_spell_effect(creatng, CSAfF_Freeze);
-    // Terminate all the actives spell effects on dying creatures.
-    terminate_all_actives_spell_effects(creatng);
-    struct CreatureControl *cctrl = creature_control_get_from_thing(creatng);
-    if (frozen) // Set back freeze flags if it was frozen, for 'cause_creature_death' function.
+    // Creature must be visible and not chicken & clear Rebound for some reason.
+    if (creature_under_spell_effect(creatng, CSAfF_Invisibility))
     {
-        set_flag(cctrl->spell_flags, CSAfF_Freeze);
-        set_flag(cctrl->stateblock_flags, CCSpl_Freeze);
-        if ((creatng->movement_flags & TMvF_Flying) != 0)
-        {
-            set_flag(creatng->movement_flags, TMvF_Grounded);
-            clear_flag(creatng->movement_flags, TMvF_Flying);
-        }
-        creature_set_speed(creatng, 0);
+        clean_spell_effect(creatng, CSAfF_Invisibility);
     }
+    if (creature_under_spell_effect(creatng, CSAfF_Chicken))
+    {
+        clean_spell_effect(creatng, CSAfF_Chicken);
+    }
+    if (creature_under_spell_effect(creatng, CSAfF_Rebound))
+    {
+        clean_spell_effect(creatng, CSAfF_Rebound);
+    }
+    // Terminate all the actives spell effects with damage > 0.
+    terminate_all_actives_damage_over_time_spell_effects(creatng);
+    struct CreatureControl *cctrl = creature_control_get_from_thing(creatng);
     if ((cctrl->unsummon_turn > 0) && (cctrl->unsummon_turn > game.play_gameturn))
     {
         create_effect_around_thing(creatng, ball_puff_effects[creatng->owner]);
         set_flag(flags, CrDed_NotReallyDying | CrDed_NoEffects);
         return cause_creature_death(creatng, flags);
     }
-    struct Dungeon* dungeon = (!is_neutral_thing(creatng)) ? get_players_num_dungeon(creatng->owner) : INVALID_DUNGEON;
+    struct Dungeon *dungeon = (!is_neutral_thing(creatng)) ? get_players_num_dungeon(creatng->owner) : INVALID_DUNGEON;
     if (!dungeon_invalid(dungeon))
     {
-        if ((flags & CrDed_DiedInBattle) != 0) {
+        if (flag_is_set(flags, CrDed_DiedInBattle))
+        {
             dungeon->battles_lost++;
         }
     }
     update_kills_counters(creatng, killertng, killer_plyr_idx, flags);
-    if (thing_is_invalid(killertng) || (killertng->owner == game.neutral_player_num) ||
-        (killer_plyr_idx == game.neutral_player_num) || dungeon_invalid(dungeon))
+    if (thing_is_invalid(killertng) || (killertng->owner == game.neutral_player_num) || (killer_plyr_idx == game.neutral_player_num) || dungeon_invalid(dungeon))
     {
-        if ((flags & CrDed_NoEffects) && ((creatng->alloc_flags & TAlF_IsControlled) != 0)) {
+        if (flag_is_set(flags, CrDed_NoEffects) && flag_is_set(creatng->alloc_flags, TAlF_IsControlled))
+        {
             prepare_to_controlled_creature_death(creatng);
         }
         return cause_creature_death(creatng, flags);
     }
-    // Now we are sure that killertng and dungeon pointers are correct
+    // Now we are sure that killertng and dungeon pointers are correct.
     if (creatng->owner == killertng->owner)
     {
-        if ((get_creature_model_flags(creatng) & CMF_IsDiptera) && (get_creature_model_flags(killertng) & CMF_IsArachnid)) {
+        if ((get_creature_model_flags(creatng) & CMF_IsDiptera) && (get_creature_model_flags(killertng) & CMF_IsArachnid))
+        {
             dungeon->lvstats.flies_killed_by_spiders++;
         }
     }
-    struct CreatureControl* cctrlgrp = creature_control_get_from_thing(killertng);
-    if (!creature_control_invalid(cctrlgrp)) {
+    struct CreatureControl *cctrlgrp = creature_control_get_from_thing(killertng);
+    if (!creature_control_invalid(cctrlgrp))
+    {
         cctrlgrp->kills_num++;
     }
     if (is_my_player_number(creatng->owner))
     {
-        if ((flags & CrDed_DiedInBattle) != 0)
+        if (flag_is_set(flags, CrDed_DiedInBattle))
         {
             output_message_far_from_thing(creatng, SMsg_BattleDeath, MESSAGE_DELAY_BATTLE, true);
         }
-    } else
-    if (is_my_player_number(killertng->owner))
+    }
+    else if (is_my_player_number(killertng->owner))
     {
         output_message_far_from_thing(creatng, SMsg_BattleWon, MESSAGE_DELAY_BATTLE, true);
     }
     if (is_hero_thing(killertng))
     {
-        if (player_creature_tends_to(killertng->owner,CrTend_Imprison)) {
-            ERRORLOG("Hero have tend to imprison");
+        if (player_creature_tends_to(killertng->owner, CrTend_Imprison))
+        {
+            ERRORLOG("Hero have tend to imprison"); // What is the point of this log error? Check if it can be removed.
         }
     }
     {
-        struct CreatureStats* crstat = creature_stats_get_from_thing(killertng);
+        struct CreatureStats *crstat = creature_stats_get_from_thing(killertng);
         anger_apply_anger_to_creature(killertng, crstat->annoy_win_battle, AngR_Other, 1);
     }
-    if (!creature_control_invalid(cctrlgrp) && ((flags & CrDed_DiedInBattle) != 0)) {
+    if (!creature_control_invalid(cctrlgrp) && flag_is_set(flags, CrDed_DiedInBattle))
+    {
         cctrlgrp->unknown_state.byte_9A++;
     }
-    if (!dungeon_invalid(dungeon)) {
+    if (!dungeon_invalid(dungeon))
+    {
         dungeon->hates_player[killertng->owner] += game.conf.rules.creature.fight_hate_kill_value;
     }
-    SYNCDBG(18,"Almost finished");
-    if (((flags & CrDed_NoUnconscious) != 0) || (!player_has_room_of_role(killertng->owner,RoRoF_Prison))
-      || (!player_creature_tends_to(killertng->owner,CrTend_Imprison)) ||
-        ((get_creature_model_flags(creatng) & CMF_IsEvil) && (CREATURE_RANDOM(creatng, 100) >= game.conf.rules.creature.stun_enemy_chance_evil)) ||
-        (!(get_creature_model_flags(creatng) & CMF_IsEvil) && (CREATURE_RANDOM(creatng, 100) >= game.conf.rules.creature.stun_enemy_chance_good)) ||
-        (get_creature_model_flags(creatng) & CMF_NoImprisonment) )
+    SYNCDBG(18, "Almost finished");
+    if (!creature_can_be_set_unconscious(creatng, killertng, flags))
     {
-        if ((flags & CrDed_NoEffects) == 0) {
+        if (!flag_is_set(flags, CrDed_NoEffects))
+        {
             return cause_creature_death(creatng, flags);
         }
     }
-    if ((flags & CrDed_NoEffects) != 0)
+    if (flag_is_set(flags, CrDed_NoEffects))
     {
-        if ((creatng->alloc_flags & TAlF_IsControlled) != 0) {
+        if (flag_is_set(creatng->alloc_flags, TAlF_IsControlled))
+        {
             prepare_to_controlled_creature_death(creatng);
         }
         return cause_creature_death(creatng, flags);
@@ -3761,32 +3786,25 @@ void thing_fire_shot(struct Thing *firing, struct Thing *target, ThingModel shot
 
 void set_creature_level(struct Thing *thing, long nlvl)
 {
-    struct CreatureStats* crstat = creature_stats_get_from_thing(thing);
-    struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
+    struct CreatureControl *cctrl = creature_control_get_from_thing(thing);
     if (creature_control_invalid(cctrl))
     {
         ERRORLOG("Creature has no control");
         return;
     }
-    if (nlvl > CREATURE_MAX_LEVEL-1) {
-        ERRORLOG("Level %d too high, bounding",(int)nlvl);
-        nlvl = CREATURE_MAX_LEVEL-1;
+    if (nlvl > CREATURE_MAX_LEVEL - 1)
+    {
+        ERRORLOG("Level %d too high, bounding", (int)nlvl);
+        nlvl = CREATURE_MAX_LEVEL - 1;
     }
-    if (nlvl < 0) {
-        ERRORLOG("Level %d too low, bounding",(int)nlvl);
+    if (nlvl < 0)
+    {
+        ERRORLOG("Level %d too low, bounding", (int)nlvl);
         nlvl = 0;
     }
-    HitPoints old_max_health = compute_creature_max_health(crstat->health, cctrl->explevel, thing->owner);
-    if (old_max_health < 1)
-        old_max_health = 1;
     cctrl->explevel = nlvl;
-    HitPoints max_health = compute_creature_max_health(crstat->health, cctrl->explevel, thing->owner);
-    cctrl->max_health = max_health;
     set_creature_size_stuff(thing);
-    if (old_max_health > 0)
-        thing->health = saturate_set_signed( (thing->health*max_health)/old_max_health, 16);
-    else
-        thing->health = -1;
+    update_relative_creature_health(thing);
     creature_increase_available_instances(thing);
     add_creature_score_to_owner(thing);
 }
@@ -4675,7 +4693,7 @@ TbBool creature_count_below_map_limit(TbBool temp_creature)
 
 struct Thing *create_creature(struct Coord3d *pos, ThingModel model, PlayerNumber owner)
 {
-    struct CreatureStats* crstat = creature_stats_get(model);
+    struct CreatureStats *crstat = creature_stats_get(model);
     if (game.thing_lists[TngList_Creatures].count >= CREATURES_COUNT)
     {
         ERRORLOG("Cannot create %s for player %d. Creature limit %d reached.", creature_code_name(model), (int)owner, CREATURES_COUNT);
@@ -4683,23 +4701,24 @@ struct Thing *create_creature(struct Coord3d *pos, ThingModel model, PlayerNumbe
     }
     if (!i_can_allocate_free_thing_structure(FTAF_FreeEffectIfNoSlots))
     {
-        ERRORDBG(3,"Cannot create %s for player %d. There are too many things allocated.",creature_code_name(model),(int)owner);
+        ERRORDBG(3, "Cannot create %s for player %d. There are too many things allocated.", creature_code_name(model), (int)owner);
         erstat_inc(ESE_NoFreeThings);
         return INVALID_THING;
     }
     if (!i_can_allocate_free_control_structure())
     {
-        ERRORDBG(3,"Cannot create %s for player %d. There are too many creatures allocated.",creature_code_name(model),(int)owner);
+        ERRORDBG(3, "Cannot create %s for player %d. There are too many creatures allocated.", creature_code_name(model), (int)owner);
         erstat_inc(ESE_NoFreeCreatrs);
         return INVALID_THING;
     }
-    struct Thing* crtng = allocate_free_thing_structure(FTAF_FreeEffectIfNoSlots);
-    if (crtng->index == 0) {
-        ERRORDBG(3,"Should be able to allocate %s for player %d, but failed.",creature_code_name(model),(int)owner);
+    struct Thing *crtng = allocate_free_thing_structure(FTAF_FreeEffectIfNoSlots);
+    if (crtng->index == 0)
+    {
+        ERRORDBG(3, "Should be able to allocate %s for player %d, but failed.", creature_code_name(model), (int)owner);
         erstat_inc(ESE_NoFreeThings);
         return INVALID_THING;
     }
-    struct CreatureControl* cctrl = allocate_free_control_structure();
+    struct CreatureControl *cctrl = allocate_free_control_structure();
     crtng->ccontrol_idx = cctrl->index;
     crtng->class_id = TCls_Creature;
     crtng->model = model;
@@ -4726,8 +4745,8 @@ struct Thing *create_creature(struct Coord3d *pos, ThingModel model, PlayerNumbe
     long i = get_creature_anim(crtng, CGI_Stand);
     set_thing_draw(crtng, i, 256, game.conf.crtr_conf.sprite_size, 0, 0, ODC_Default);
     cctrl->explevel = 1;
-    crtng->health = crstat->health;
-    cctrl->max_health = compute_creature_max_health(crstat->health,cctrl->explevel, owner);
+    cctrl->max_health = calculate_correct_creature_max_health(crtng);
+    crtng->health = cctrl->max_health;
     crtng->owner = owner;
     crtng->mappos.x.val = pos->x.val;
     crtng->mappos.y.val = pos->y.val;
@@ -4737,15 +4756,16 @@ struct Thing *create_creature(struct Coord3d *pos, ThingModel model, PlayerNumbe
     cctrl->blood_type = CREATURE_RANDOM(crtng, BLOOD_TYPES_COUNT);
     if (player_is_roaming(owner))
     {
-      cctrl->hero.sbyte_89 = -1;
-      cctrl->hero.byte_8C = 1;
+        cctrl->hero.sbyte_89 = -1;
+        cctrl->hero.byte_8C = 1;
     }
     cctrl->flee_pos.x.val = crtng->mappos.x.val;
     cctrl->flee_pos.y.val = crtng->mappos.y.val;
     cctrl->flee_pos.z.val = crtng->mappos.z.val;
     cctrl->flee_pos.z.val = get_thing_height_at(crtng, pos);
     cctrl->fighting_player_idx = -1;
-    if (crstat->flying) {
+    if (crstat->flying)
+    {
         crtng->movement_flags |= TMvF_Flying;
     }
     set_creature_level(crtng, 0);
@@ -4753,11 +4773,14 @@ struct Thing *create_creature(struct Coord3d *pos, ThingModel model, PlayerNumbe
     add_thing_to_its_class_list(crtng);
     place_thing_in_mapwho(crtng);
     if (owner <= PLAYERS_COUNT)
-      set_first_creature(crtng);
+    {
+        set_first_creature(crtng);
+    }
     set_start_state(crtng);
     add_creature_score_to_owner(crtng);
     cctrl->active_instance_id = creature_choose_first_available_instance(crtng);
-    if (crstat->illuminated) {
+    if (crstat->illuminated)
+    {
         illuminate_creature(crtng);
     }
     return crtng;
@@ -5671,7 +5694,7 @@ long player_list_creature_filter_needs_to_be_placed_in_room_for_job(const struct
         }
     }
 
-    int health_permil = get_creature_health_permil(thing);
+    HitPoints health_permil = get_creature_health_permil(thing);
     // If it's angry but not furious, or has lost health due to disease, then should be placed in temple.
     if ((anger_is_creature_angry(thing)
     || (creature_under_spell_effect(thing, CSAfF_Disease) && (health_permil <= (game.conf.rules.computer.disease_to_temple_pct * 10))))
