@@ -89,6 +89,7 @@ const struct NamedCommand creatmodel_attributes_commands[] = {
   {"PRISONKIND",         35},
   {"TORTUREKIND",        36},
   {"SPELLIMMUNITY",      37},
+  {"HOSTILETOWARDS",     38},
   {NULL,                  0},
   };
 
@@ -126,6 +127,7 @@ const struct NamedCommand creatmodel_properties_commands[] = {
   {"NO_STEAL_HERO",     32},
   {"PREFER_STEAL",      33},
   {"EVENTFUL_DEATH",    34},
+  {"DIGGING_CREATURE",  35},
   {NULL,                 0},
   };
 
@@ -748,6 +750,10 @@ TbBool parse_creaturemodel_attributes_blocks(long crtr_model,char *buf,long len,
                 crconf->model_flags |= CMF_EventfulDeath;
                 n++;
                 break;
+            case 35: // DIGGING_CREATURE
+                crconf->model_flags |= CMF_IsDiggingCreature;
+                n++;
+                break;
             default:
               CONFWRNLOG("Incorrect value of \"%s\" parameter \"%s\" in [%s] block of %s %s file.",
                   COMMAND_TEXT(cmd_num),word_buf,block_buf, creature_code_name(crtr_model), config_textname);
@@ -891,6 +897,38 @@ TbBool parse_creaturemodel_attributes_blocks(long crtr_model,char *buf,long len,
             }
             break;
         }
+        case 38: // HOSTILETOWARDS
+            for (int i = 0; i < CREATURE_TYPES_MAX; i++)
+            {
+                if (get_conf_parameter_single(buf, &pos, len, word_buf, sizeof(word_buf)) > 0)
+                {
+                    k = get_id(creature_desc, word_buf);
+                    if (k >= 0)
+                    {
+                        crstat->hostile_towards[i] = k;
+                        n++;
+                    }
+                    else if (0 == strcmp(word_buf, "ANY_CREATURE"))
+                    {
+                        crstat->hostile_towards[i] = CREATURE_ANY;
+                        n++;
+                    }
+                    else
+                    {
+                        crstat->hostile_towards[i] = 0;
+                        if (strcasecmp(word_buf, "NULL") == 0)
+                        {
+                            n++;
+                        }
+                    }
+                }
+            }
+            if (n < 1)
+            {
+                CONFWRNLOG("Incorrect value of \"%s\" parameter in [%s] block of %s file of creature %s.",
+                    COMMAND_TEXT(cmd_num), block_buf, config_textname, creature_code_name(crtr_model));
+            }
+            break;
       case ccr_comment:
           break;
       case ccr_endOfFile:
@@ -904,7 +942,7 @@ TbBool parse_creaturemodel_attributes_blocks(long crtr_model,char *buf,long len,
   }
 #undef COMMAND_TEXT
   // If the creature is a special breed, then update an attribute in CreatureConfig struct
-  if ((crconf->model_flags & CMF_IsSpecDigger) != 0)
+  if ((crconf->model_flags & (CMF_IsSpecDigger|CMF_IsDiggingCreature)) != 0)
   {
       if ((crconf->model_flags & CMF_IsEvil) != 0) {
           game.conf.crtr_conf.special_digger_evil = crtr_model;
@@ -917,7 +955,7 @@ TbBool parse_creaturemodel_attributes_blocks(long crtr_model,char *buf,long len,
       game.conf.crtr_conf.spectator_breed = crtr_model;
   }
   // Set creature start states based on the flags
-  if ((crconf->model_flags & CMF_IsSpecDigger) != 0)
+  if ((crconf->model_flags & (CMF_IsSpecDigger|CMF_IsDiggingCreature)) != 0)
   {
       crstat->evil_start_state = CrSt_ImpDoingNothing;
       crstat->good_start_state = CrSt_TunnellerDoingNothing;
