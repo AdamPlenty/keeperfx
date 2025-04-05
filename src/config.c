@@ -372,9 +372,8 @@ int64_t value_name(const struct NamedField* named_field, const char* value_text,
     return 0;
 }
 
-
-//expects value_text to be a space seperated list of values in the named fields named command, wich can be combined with bitwise or
-int64_t value_flagsfieldshift(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, unsigned char src)
+//same as value_flagsfield but treats the namedCommand field as a longnamedCommand
+int64_t value_longflagsfield(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, unsigned char src)
 {
     int64_t value = 0;
     char word_buf[COMMAND_WORD_LEN];
@@ -402,20 +401,17 @@ int64_t value_flagsfieldshift(const struct NamedField* named_field, const char* 
                 return original_value;
             }
         }
-        
-        int k = get_id(named_field->namedCommand, word_buf);
-        if(k > 0)
-        {
-            value |= 1<<(k - 1);
-        }
+
+        int k = get_long_id((struct LongNamedCommand*)named_field->namedCommand, word_buf);
+        if(k >= 0)
+            value |= k;
         else
-        {
             NAMFIELDWRNLOG("Unexpected value for field '%s', got '%s'",named_field->name,word_buf);
-        }
         i++;
     }
     return value;
 }
+
 
 //expects value_text to be a space seperated list of values in the named fields named command, wich can be combined with bitwise or
 int64_t value_flagsfield(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, unsigned char src)
@@ -693,7 +689,7 @@ void assign_named_field_value(const struct NamedField* named_field, int64_t valu
  * If ccr_error        is returned, that means something went wrong.
  */
 
-int assign_conf_command_field(const char *buf,long *pos,long buflen,const struct NamedField commands[], const struct NamedFieldSet* named_fields_set, int idx)
+int assign_conf_command_field(const char *buf,long *pos,long buflen,const struct NamedField commands[], const struct NamedFieldSet* named_fields_set, int idx, unsigned short flags)
 {
     SYNCDBG(19,"Starting");
     if ((*pos) >= buflen) return -1;
@@ -712,7 +708,13 @@ int assign_conf_command_field(const char *buf,long *pos,long buflen,const struct
     // Finding command number
     int i = 0;
     while (commands[i].name != NULL)
-    {
+    {   
+        if (flag_is_set(flags,CnfLd_ListOnly) && strcasecmp(commands[i].name,"Name") != 0)
+        {
+            i++;
+            continue;
+        }
+
         if (commands[i].argnum > 0)
         {
             i++;
@@ -822,7 +824,7 @@ TbBool parse_named_field_block(const char *buf, long len, const char *config_tex
     while (pos<len)
     {
         // Finding command number in this line.
-        int assignresult = assign_conf_command_field(buf, &pos, len, named_field,named_fields_set,idx);
+        int assignresult = assign_conf_command_field(buf, &pos, len, named_field,named_fields_set,idx,flags);
         if( assignresult == ccr_ok || assignresult == ccr_comment )
         {
             skip_conf_to_next_line(buf,&pos,len);
