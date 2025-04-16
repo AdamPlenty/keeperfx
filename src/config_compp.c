@@ -28,33 +28,40 @@
 #include "config_strings.h"
 #include "player_computer.h"
 #include "thing_data.h"
+#include "game_merge.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 /******************************************************************************/
+static TbBool load_computer_player_config_file(const char *fname, unsigned short flags);
 
-const char keeper_compplayer_file[]="keepcompp.cfg";
+const struct ConfigFileData keeper_keepcomp_file_data = {
+  .filename = "keepcompp.cfg",
+  .load_func = load_computer_player_config_file,
+  .post_load_func = NULL,
+};
+
 
 /******************************************************************************/
 struct ComputerPlayerConfig comp_player_conf;
 
-static TbBool computer_type_clear_processes(struct ComputerTypes *cpt);
-static TbBool computer_type_clear_checks(struct ComputerTypes *cpt);
-static short computer_type_clear_events(struct ComputerTypes *cpt);
+static TbBool computer_type_clear_processes(struct ComputerType *cpt);
+static TbBool computer_type_clear_checks(struct ComputerType *cpt);
+static short computer_type_clear_events(struct ComputerType *cpt);
 
-static int64_t value_processes(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, unsigned char src);
-static int64_t value_checks(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, unsigned char src);
-static int64_t value_events(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, unsigned char src);
+static int64_t value_processes(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, const char* src_str, unsigned char flags);
+static int64_t value_checks(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, const char* src_str, unsigned char flags);
+static int64_t value_events(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, const char* src_str, unsigned char flags);
 
 static int get_computer_process_config_list_index_mnem(const char *mnemonic);
 static int get_computer_check_config_list_index_mnem(const char *mnemonic);
 static int get_computer_event_config_list_index_mnem(const char *mnemonic);
 
-static int computer_type_add_process(struct ComputerTypes *cpt, struct ComputerProcess *cproc);
-static int computer_type_add_check(struct ComputerTypes *cpt, struct ComputerCheck *check);
-static int computer_type_add_event(struct ComputerTypes *cpt, struct ComputerEvent *event);
+static int computer_type_add_process(struct ComputerType *cpt, unsigned char cproc_idx);
+static int computer_type_add_check(struct ComputerType *cpt, unsigned char check_idx);
+static int computer_type_add_event(struct ComputerType *cpt, unsigned char event_idx);
 
 /******************************************************************************/
 
@@ -77,7 +84,6 @@ const struct NamedFieldSet compp_common_named_fields_set = {
   0,
   0,
   NULL,
-  {"keepcompp.cfg","INVALID"},
 };
 
 static const struct NamedField compp_process_named_fields[] = {
@@ -111,7 +117,6 @@ const struct NamedFieldSet compp_process_named_fields_set = {
   COMPUTER_PROCESS_TYPES_COUNT,
   sizeof(comp_player_conf.process_types[0]),
   comp_player_conf.process_types,
-  {"keepcompp.cfg","INVALID"},
 };
 
 static const struct NamedField compp_check_named_fields[] = {
@@ -137,7 +142,6 @@ const struct NamedFieldSet compp_check_named_fields_set = {
   COMPUTER_CHECKS_TYPES_COUNT,
   sizeof(comp_player_conf.check_types[0]),
   comp_player_conf.check_types,
-  {"keepcompp.cfg","INVALID"},
 };
 
 static const struct NamedField compp_event_named_fields[] = {
@@ -165,7 +169,6 @@ const struct NamedFieldSet compp_event_named_fields_set = {
   COMPUTER_EVENTS_TYPES_COUNT,
   sizeof(comp_player_conf.event_types[0]),
   comp_player_conf.event_types,
-  {"keepcompp.cfg","INVALID"},
 };
 
 
@@ -197,14 +200,13 @@ const struct NamedFieldSet compp_computer_named_fields_set = {
   COMPUTER_MODELS_COUNT,
   sizeof(comp_player_conf.computer_types[0]),
   comp_player_conf.computer_types,
-  {"keepcompp.cfg","INVALID"},
 };
 
 /******************************************************************************/
-int64_t value_processes(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, unsigned char src)
+int64_t value_processes(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, const char* src_str, unsigned char flags)
 {
   char word_buf[COMMAND_WORD_LEN];
-  struct ComputerTypes* cpt = get_computer_type_template(idx);
+  struct ComputerType* cpt = get_computer_type_template(idx);
   computer_type_clear_processes(cpt);
 
   long pos = 0;
@@ -217,7 +219,7 @@ int64_t value_processes(const struct NamedField* named_field, const char* value_
           NAMFIELDWRNLOG("process %s not recognized for [%s%d].",word_buf, named_fields_set->block_basename, idx);
           continue;
       }
-      if (computer_type_add_process(cpt, &comp_player_conf.process_types[process_idx]) < 0)
+      if (computer_type_add_process(cpt, process_idx) < 0)
       {
           NAMFIELDWRNLOG("failed to add process %s for [%s%d].",word_buf, named_fields_set->block_basename, idx);
       }
@@ -225,10 +227,10 @@ int64_t value_processes(const struct NamedField* named_field, const char* value_
   return 0;
 }
 
-int64_t value_checks(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, unsigned char src)
+int64_t value_checks(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, const char* src_str, unsigned char flags)
 {
     char word_buf[COMMAND_WORD_LEN];
-    struct ComputerTypes* cpt = get_computer_type_template(idx);
+    struct ComputerType* cpt = get_computer_type_template(idx);
     computer_type_clear_checks(cpt);
 
     long pos = 0;
@@ -241,7 +243,7 @@ int64_t value_checks(const struct NamedField* named_field, const char* value_tex
             NAMFIELDWRNLOG("check %s not recognized for [%s%d].",word_buf, named_fields_set->block_basename, idx);
             continue;
         }
-        if (computer_type_add_check(cpt, &comp_player_conf.check_types[check_idx]) < 0)
+        if (computer_type_add_check(cpt, check_idx) < 0)
         {
             NAMFIELDWRNLOG("failed to add check %s for [%s%d].",word_buf, named_fields_set->block_basename, idx);
         }
@@ -249,10 +251,10 @@ int64_t value_checks(const struct NamedField* named_field, const char* value_tex
     return 0;
 }
 
-int64_t value_events(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, unsigned char src)
+int64_t value_events(const struct NamedField* named_field, const char* value_text, const struct NamedFieldSet* named_fields_set, int idx, const char* src_str, unsigned char flags)
 {
   char word_buf[COMMAND_WORD_LEN];
-  struct ComputerTypes* cpt = get_computer_type_template(idx);
+  struct ComputerType* cpt = get_computer_type_template(idx);
   computer_type_clear_events(cpt);
   
   long pos = 0;
@@ -265,7 +267,7 @@ int64_t value_events(const struct NamedField* named_field, const char* value_tex
         NAMFIELDWRNLOG("event %s not recognized for [%s%d].",word_buf, named_fields_set->block_basename, idx);
         continue;
     }
-    if (computer_type_add_event(cpt, &comp_player_conf.event_types[event_idx]) < 0)
+    if (computer_type_add_event(cpt, event_idx) < 0)
     {
         NAMFIELDWRNLOG("failed to add event %s for [%s%d].",word_buf, named_fields_set->block_basename, idx);
     }
@@ -307,94 +309,85 @@ static int get_computer_event_config_list_index_mnem(const char *mnemonic)
   return 0;
 }
 
-struct ComputerTypes *get_computer_type_template(long cpt_idx)
+struct ComputerType *get_computer_type_template(long cpt_idx)
 {
     if ((cpt_idx < 0) || (cpt_idx >= COMPUTER_MODELS_COUNT))
         cpt_idx = 0;
   return &comp_player_conf.computer_types[cpt_idx];
 }
 
-static TbBool computer_type_clear_processes(struct ComputerTypes *cpt)
+static TbBool computer_type_clear_processes(struct ComputerType *cpt)
+{
+    memset(&cpt->processes, 0, sizeof(cpt->processes));
+    return true;
+}
+
+static int computer_type_add_process(struct ComputerType *cpt, unsigned char cproc_idx)
 {
     for (int i = 0; i < COMPUTER_PROCESSES_COUNT; i++)
     {
-        cpt->processes[i] = NULL;
-  }
-  return true;
-}
-
-static int computer_type_add_process(struct ComputerTypes *cpt, struct ComputerProcess *cproc)
-{
-    for (int i = 0; i < COMPUTER_PROCESSES_COUNT; i++)
-    {
-        if (cpt->processes[i] == NULL)
+        if (cpt->processes[i] == 0)
         {
-            cpt->processes[i] = cproc;
+            cpt->processes[i] = cproc_idx;
             return i;
         }
-  }
-  return -1;
+    }
+    return -1;
 }
 
-static TbBool computer_type_clear_checks(struct ComputerTypes *cpt)
+static TbBool computer_type_clear_checks(struct ComputerType *cpt)
+{
+    memset(&cpt->checks, 0, sizeof(cpt->checks));
+    return true;
+}
+
+static int computer_type_add_check(struct ComputerType *cpt, unsigned char check_idx)
 {
     for (int i = 0; i < COMPUTER_CHECKS_COUNT; i++)
     {
-        memset(&cpt->checks[i], 0, sizeof(struct ComputerCheck));
-  }
-  return true;
-}
-
-static int computer_type_add_check(struct ComputerTypes *cpt, struct ComputerCheck *check)
-{
-    for (int i = 0; i < COMPUTER_CHECKS_COUNT; i++)
-    {
-        if (cpt->checks[i].name[0] == '\0')
+        if (cpt->checks[i] == 0)
         {
-            memcpy(&cpt->checks[i], check, sizeof(struct ComputerCheck));
+            cpt->checks[i] = check_idx;
             return i;
         }
   }
   return -1;
 }
 
-short computer_type_clear_events(struct ComputerTypes *cpt)
+short computer_type_clear_events(struct ComputerType *cpt)
 {
-    for (int i = 0; i < COMPUTER_EVENTS_COUNT; i++)
-    {
-        memset(&cpt->events[i], 0, sizeof(struct ComputerEvent));
-  }
-  return true;
+
+    memset(&cpt->events, 0, sizeof(cpt->events));
+    return true;
 }
 
-static int computer_type_add_event(struct ComputerTypes *cpt, struct ComputerEvent *event)
+static int computer_type_add_event(struct ComputerType *cpt, unsigned char event_idx)
 {
     for (int i = 0; i < COMPUTER_EVENTS_COUNT; i++)
     {
-        if (cpt->events[i].name[0] == '\0')
+        if (cpt->events[i] == 0)
         {
-            memcpy(&cpt->events[i], event, sizeof(struct ComputerEvent));
+            cpt->events[i] = event_idx;
             return i;
         }
-  }
-  return -1;
+    }
+    return -1;
 }
 
-TbBool load_computer_player_config(unsigned short flags)
+static TbBool load_computer_player_config_file(const char *fname, unsigned short flags)
 {
     SYNCDBG(8, "Starting");
-    static const char *textname = "Computer Player";
     // Load the config file
-    const char* fname = prepare_file_path(FGrp_FxData, keeper_compplayer_file);
     long len = LbFileLengthRnc(fname);
     if (len < 2)
     {
-        ERRORLOG("Computer Player file \"%s\" doesn't exist or is too small.",keeper_compplayer_file);
+        if (!flag_is_set(flags,CnfLd_IgnoreErrors))
+          ERRORLOG("Computer Player file \"%s\" doesn't exist or is too small.",fname);
         return false;
     }
     if (len > 65536)
     {
-        ERRORLOG("Computer Player file \"%s\" is too large.",keeper_compplayer_file);
+        ERRORLOG("Computer Player file \"%s\" is too large.",fname);
         return false;
     }
     char* buf = (char*)calloc(len + 256, 1);
@@ -404,11 +397,11 @@ TbBool load_computer_player_config(unsigned short flags)
     len = LbFileLoadAt(fname, buf);
     if (len>0)
     {
-        parse_named_field_block(buf, len, textname, flags,"common",  compp_common_named_fields,&compp_common_named_fields_set, 0);
-        parse_named_field_blocks(buf, len, textname, flags, &compp_process_named_fields_set);
-        parse_named_field_blocks(buf, len, textname, flags, &compp_check_named_fields_set);
-        parse_named_field_blocks(buf, len, textname, flags, &compp_event_named_fields_set);
-        parse_named_field_blocks(buf, len, textname, flags, &compp_computer_named_fields_set);
+        parse_named_field_block(buf, len, fname, flags,"common",  compp_common_named_fields,&compp_common_named_fields_set, 0);
+        parse_named_field_blocks(buf, len, fname, flags, &compp_process_named_fields_set);
+        parse_named_field_blocks(buf, len, fname, flags, &compp_check_named_fields_set);
+        parse_named_field_blocks(buf, len, fname, flags, &compp_event_named_fields_set);
+        parse_named_field_blocks(buf, len, fname, flags, &compp_computer_named_fields_set);
     }
     //Freeing and exiting
     free(buf);
