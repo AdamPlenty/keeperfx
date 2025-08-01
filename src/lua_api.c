@@ -43,9 +43,28 @@
 
 static int lua_Set_generate_speed(lua_State *L)
 {
-    GameTurnDelta interval   = luaL_checkinteger(L,1);
-
-    game.generate_speed = saturate_set_unsigned(interval, 16);
+    GameTurnDelta interval = luaL_checkinteger(L,1);
+    PlayerNumber player_idx = (luaL_isPlayer(L,2)) ? luaL_checkPlayerSingle(L,2) : ALL_PLAYERS;
+    struct PlayerInfo* player;
+    if (player_idx == ALL_PLAYERS)
+    {
+        for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
+        {
+            player = get_player(plyr_idx);
+            if (!player_invalid(player))
+            {
+                player->generate_speed = saturate_set_unsigned(interval, 16);
+            }
+        }
+    }
+    else
+    {
+        player = get_player(player_idx);
+        if (!player_invalid(player))
+        {
+            player->generate_speed = saturate_set_unsigned(interval, 16);
+        }
+    }
     update_dungeon_generation_speeds();
     return 0;
 }
@@ -350,6 +369,18 @@ static int lua_Reset_action_point(lua_State *L)
     PlayerNumber player_range = luaL_checkPlayerRangeId(L, 2);
     
     action_point_reset_idx(apt_idx, player_range);
+    return 0;
+}
+
+static int lua_Set_next_level(lua_State *L)
+{
+    LevelNumber lvnum = luaL_checkinteger(L, 1);
+    if(!is_level_in_current_campaign(lvnum))
+    {
+        return luaL_argerror(L, 1, lua_pushfstring(L, "Level '%d' not part of current campaign", lvnum));
+    }
+    
+    intralvl.next_level = lvnum;
     return 0;
 }
 
@@ -2009,6 +2040,7 @@ static const luaL_Reg global_methods[] = {
    {"BonusLevelTime",                   lua_Bonus_level_time                },
    {"AddBonusTime",                     lua_Add_bonus_time                  },
    {"ResetActionPoint",                 lua_Reset_action_point              },
+   {"SetNextLevel",                     lua_Set_next_level                  },
 
 //Adding New Creatures and Parties to the Level
    {"AddCreatureToLevel",               lua_Add_creature_to_level           },
