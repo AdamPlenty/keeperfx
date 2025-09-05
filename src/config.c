@@ -1567,8 +1567,8 @@ short set_level_info_text_name(LevelNumber lvnum, char *name, unsigned long lvop
     snprintf(lvinfo->name, LINEMSG_SIZE, "%s", name);
     if ((lvoptions & LvKind_IsFree) != 0)
     {
-        lvinfo->ensign_x += ((LANDVIEW_MAP_WIDTH >> 4) * (LbSinL(lvnum * LbFPMath_PI / 16) >> 6)) >> 10;
-        lvinfo->ensign_y -= ((LANDVIEW_MAP_HEIGHT >> 4) * (LbCosL(lvnum * LbFPMath_PI / 16) >> 6)) >> 10;
+        lvinfo->ensign_x += ((LANDVIEW_MAP_WIDTH >> 4) * (LbSinL(lvnum * DEGREES_11_25) >> 6)) >> 10;
+        lvinfo->ensign_y -= ((LANDVIEW_MAP_HEIGHT >> 4) * (LbCosL(lvnum * DEGREES_11_25) >> 6)) >> 10;
   }
   return true;
 }
@@ -1583,11 +1583,11 @@ TbBool reset_credits(struct CreditsItem *credits)
   return true;
 }
 
-TbBool parse_credits_block(struct CreditsItem *credits,char *buf,char *buf_end)
+TbBool parse_credits_block(struct CreditsItem *credits,char *buf,char *buffer_end_pointer)
 {
   const char * block_name = "credits";
   // Find the block
-  long len = buf_end - buf;
+  long len = buffer_end_pointer - buf;
   long pos = 0;
   int k = find_conf_block(buf, &pos, len, block_name);
   if (k < 0)
@@ -1965,7 +1965,7 @@ LevelNumber next_singleplayer_level(LevelNumber sp_lvnum, TbBool ignore)
   if (sp_lvnum == SINGLEPLAYER_NOTSTARTED) return first_singleplayer_level();
   if (sp_lvnum < 1) return LEVELNUMBER_ERROR;
   int next_level;
-  
+
   if ((intralvl.next_level > 0) && !ignore)
   {
       next_level = intralvl.next_level;
