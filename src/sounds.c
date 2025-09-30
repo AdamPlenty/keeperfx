@@ -26,7 +26,6 @@
 #include "bflib_fileio.h"
 #include "bflib_math.h"
 #include "bflib_planar.h"
-#include "bflib_bufrw.h"
 #include "engine_render.h"
 #include "map_utils.h"
 #include "engine_camera.h"
@@ -75,11 +74,11 @@ void thing_play_sample(struct Thing *thing, SoundSmplTblID smptbl_idx, SoundPitc
         return;
     if (thing_is_invalid(thing))
         return;
-    
+
     // Apply sound volume setting to current sound's loudness level
     SoundVolume volume_scale = LbLerp(0, FULL_LOUDNESS, (float)settings.sound_volume/127.0); // [0-127] rescaled to [0-256]
     SoundVolume adjusted_loudness = (loudness * volume_scale) / FULL_LOUDNESS;
-    
+
     struct Coord3d rcpos;
     rcpos.x.val = Receiver.pos.val_x;
     rcpos.y.val = Receiver.pos.val_y;
@@ -153,7 +152,7 @@ void play_thing_walking(struct Thing *thing)
         struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
         if ((cctrl->distance_to_destination) && get_foot_creature_has_down(thing))
         {
-            int smpl_variant = foot_down_sound_sample_variant[4 * ((cctrl->mood_flags & 0x1C) >> 2) + (cctrl->sound_flag & 0x1F)];
+            int smpl_variant = foot_down_sound_sample_variant[4 * cctrl->footstep_variant + cctrl->footstep_counter];
             long smpl_idx;
             if ((thing->movement_flags & TMvF_IsOnSnow) != 0) {
                 smpl_idx = 181 + smpl_variant;
@@ -161,17 +160,16 @@ void play_thing_walking(struct Thing *thing)
                 struct CreatureSound* crsound = get_creature_sound(thing, CrSnd_Foot);
                 smpl_idx = crsound->index + smpl_variant;
             }
-            cctrl->sound_flag = (cctrl->sound_flag ^ (cctrl->sound_flag ^ (cctrl->sound_flag + 1))) & 0x1F;
-            if ((cctrl->sound_flag & 0x1F) >= 4)
+            cctrl->footstep_counter++;
+            if (cctrl->footstep_counter >= 4)
             {
-                cctrl->mood_flags &= ~0x1C;
-                cctrl->mood_flags |=  (UNSYNC_RANDOM(4) << 2);
-                cctrl->sound_flag &= ~0x1F;
+                cctrl->footstep_variant = UNSYNC_RANDOM(4);
+                cctrl->footstep_counter = 0;
             }
             crconf = creature_stats_get(thing->model);
             thing_play_sample(thing, smpl_idx, crconf->footstep_pitch, 0, 3, 3, 1, loudness);
             if ((thing->movement_flags & TMvF_IsOnWater) != 0) {
-                thing_play_sample(thing, 21 + UNSYNC_RANDOM(4), 90 + UNSYNC_RANDOM(20), 0, 3, 3, 1, FULL_LOUDNESS);
+                thing_play_sample(thing, 21 + SOUND_RANDOM(4), 90 + SOUND_RANDOM(20), 0, 3, 3, 1, FULL_LOUDNESS);
             }
         }
     }
@@ -322,10 +320,10 @@ void update_player_sounds(void)
         if (game.conf.rules.game.easter_egg_speech_interval != 0 && (game.play_gameturn % game.conf.rules.game.easter_egg_speech_interval) == 0)
         {
             // The chance for the easter egg speech to trigger. Original DK value was 1/2000
-            if (game.conf.rules.game.easter_egg_speech_chance != 0 && UNSYNC_RANDOM(game.conf.rules.game.easter_egg_speech_chance) == 0)
+            if (game.conf.rules.game.easter_egg_speech_chance != 0 && SOUND_RANDOM(game.conf.rules.game.easter_egg_speech_chance) == 0)
             {
                 // Select a random Easter egg speech
-                k = UNSYNC_RANDOM(10);
+                k = SOUND_RANDOM(10);
                 SYNCDBG(9,"Rare message condition met, selected %d",(int)k);
 
                 if (k == 7)
@@ -348,13 +346,13 @@ void update_player_sounds(void)
             if ( atmos_sounds_enabled() )
             {
                 //Plays a sound on repeat, default sound sample 1013(water drops), with a small chance of a random other sound from the range.
-                k = UNSYNC_RANDOM(atmos_sound_frequency);
+                k = SOUND_RANDOM(atmos_sound_frequency);
                 if (k == 1)
                 {
                     // No atmos sounds the first 3 minutes
                     if (game.play_gameturn > 3600)
                     {
-                        play_atmos_sound(AtmosStart + UNSYNC_RANDOM((AtmosEnd + 1) - AtmosStart));
+                        play_atmos_sound(AtmosStart + SOUND_RANDOM((AtmosEnd + 1) - AtmosStart));
                     }
                 } else
                 {
@@ -424,13 +422,13 @@ TbBool init_sound(void)
 
 struct Thing *create_ambient_sound(const struct Coord3d *pos, ThingModel model, PlayerNumber owner)
 {
-    if ( !i_can_allocate_free_thing_structure(FTAF_FreeEffectIfNoSlots) )
+    if ( !i_can_allocate_free_thing_structure(TCls_AmbientSnd) )
     {
         ERRORDBG(3,"Cannot create ambient sound %d for player %d. There are too many things allocated.",(int)model,(int)owner);
         erstat_inc(ESE_NoFreeThings);
         return INVALID_THING;
     }
-    struct Thing* thing = allocate_free_thing_structure(FTAF_FreeEffectIfNoSlots);
+    struct Thing* thing = allocate_free_thing_structure(TCls_AmbientSnd);
     if (thing->index == 0) {
         ERRORDBG(3,"Should be able to allocate ambient sound %d for player %d, but failed.",(int)model,(int)owner);
         erstat_inc(ESE_NoFreeThings);

@@ -84,22 +84,6 @@ TbBool has_available_enemy_dungeon_heart(struct Thing *thing, PlayerNumber plyr_
     return false;
 }
 
-TbBool has_available_rooms_to_attack(struct Thing* thing, PlayerNumber plyr_idx)
-{
-    SYNCDBG(18, "Starting");
-    struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
-    if ((cctrl->hero.ready_for_attack_flag != 0) || (cctrl->hero.hero_state_reset_flag != 0))
-    {
-        cctrl->hero.ready_for_attack_flag = 0;
-        cctrl->hero.hero_state_reset_flag = 0;
-    }
-    if (players_are_enemies(thing->owner, plyr_idx) && creature_can_get_to_any_of_players_rooms(thing, plyr_idx))
-    {
-        return true;
-    }
-    return false;
-}
-
 long good_find_best_enemy_dungeon(struct Thing* creatng)
 {
     PlayerNumber best_plyr_idx = -1;
@@ -140,16 +124,6 @@ long good_find_best_enemy_dungeon(struct Thing* creatng)
                         best_plyr_idx = plyr_idx;
                     }
                 }
-                // Disabled for performance reasons
-                /*else if ((has_available_rooms_to_attack(creatng, plyr_idx)) && best_plyr_idx == -1)
-                {
-                    long best_backup_score = LONG_MIN;
-                    if (best_backup_score < score)
-                    {
-                        best_backup_score = score;
-                        backup_plyr_idx = plyr_idx;
-                    }
-                }*/
             }
         }
     }
@@ -163,7 +137,7 @@ long good_find_best_enemy_dungeon(struct Thing* creatng)
 /**
  * Checks if given hero has money that should be placed in treasure room.
  * If he does, he is ordered to return them into nearest treasure room
- * which has the proper capacity. 
+ * which has the proper capacity.
  * @param thing The hero.
  * @return Gives 1 if the hero was ordered to go into treasure room, 0 otherwise.
  */
@@ -206,7 +180,7 @@ TbBool good_setup_wander_to_exit(struct Thing *creatng)
                     creature_drops_spell_object_in_library(creatng);
                     return true;
                 }
-                else 
+                else
                 {
                     if (creature_drop_thing_to_another_room(creatng, dstroom, RoRoF_PowersStorage))
                     {
@@ -488,7 +462,7 @@ TbBool setup_wanderer_move_to_random_creature_from_list(long first_thing_idx, st
         SYNCDBG(4,"The %s index %d cannot wander to creature, there are no targets",thing_model_name(wanderer),(int)wanderer->index);
         return false;
     }
-    long target_match = CREATURE_RANDOM(wanderer, possible_targets);
+    long target_match = THING_RANDOM(wanderer, possible_targets);
     if ( wander_to_specific_possible_target_in_list(first_thing_idx, wanderer, target_match) )
     {
         return true;
@@ -578,7 +552,7 @@ short good_attack_room(struct Thing *thing)
         return 1;
     }
     // Otherwise, search around for a tile to destroy
-    long m = CREATURE_RANDOM(thing, SMALL_AROUND_SLAB_LENGTH);
+    long m = THING_RANDOM(thing, SMALL_AROUND_SLAB_LENGTH);
     for (long n = 0; n < SMALL_AROUND_SLAB_LENGTH; n++)
     {
         MapSlabCoord slb_x = base_slb_x + (long)small_around[m].delta_x;
@@ -613,7 +587,7 @@ short good_back_at_start(struct Thing *thing)
         return 1;
     }
     SubtlCodedCoords stl_num = get_subtile_number(thing->mappos.x.stl.num, thing->mappos.y.stl.num);
-    long m = CREATURE_RANDOM(thing, AROUND_MAP_LENGTH);
+    long m = THING_RANDOM(thing, AROUND_MAP_LENGTH);
     for (long n = 0; n < AROUND_MAP_LENGTH; n++)
     {
         struct Map* mapblk = get_map_block_at_pos(stl_num + game.around_map[m]);
@@ -827,7 +801,7 @@ TbBool good_creature_setup_task_in_dungeon(struct Thing *creatng, PlayerNumber t
         return false;
     case CHeroTsk_AttackEnemies:
         // Randomly select if we will first try to wander to creature, or to special digger
-        if (CREATURE_RANDOM(creatng, 2) == 1)
+        if (THING_RANDOM(creatng, 2) == 1)
         {
             // Try wander to creature
             if (good_setup_wander_to_creature(creatng, cctrl->party.target_plyr_idx))

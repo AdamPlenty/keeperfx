@@ -476,37 +476,6 @@ long near_map_block_thing_filter_is_enemy_of_able_to_attack_and_not_specdigger(c
 }
 
 /**
- * Filter function.
- * @param thing The thing being checked.
- * @param param Parameters exchanged between filter calls.
- * @param maximizer Previous value which made a thing pass the filter.
- */
-long near_map_block_thing_filter_is_creature_of_model_owned_and_controlled_by(const struct Thing *thing, MaxTngFilterParam param, long maximizer)
-{
-    if (thing->class_id == TCls_Creature)
-    {
-        if (creature_matches_model(thing,param->model_id))
-        {
-            if ((param->plyr_idx == -1) || (thing->owner == param->plyr_idx))
-            {
-                if (!creature_is_being_unconscious(thing) && !thing_is_picked_up(thing) && !creature_is_kept_in_custody_by_enemy(thing) && !creature_is_leaving_and_cannot_be_stopped(thing))
-                {
-                    // Prepare reference Coord3d struct for distance computation
-                    struct Coord3d refpos;
-                    refpos.x.val = param->primary_number;
-                    refpos.y.val = param->secondary_number;
-                    refpos.z.val = 0;
-                    // This function should return max value when the distance is minimal, so:
-                    return LONG_MAX-get_2d_distance(&thing->mappos, &refpos);
-                }
-            }
-        }
-    }
-    // If conditions are not met, return -1 to be sure thing will not be returned.
-    return -1;
-}
-
-/**
  * Filter function. Random around AP
  * @param thing The thing being checked.
  * @param param Parameters exchanged between filter calls.
@@ -904,32 +873,6 @@ long anywhere_thing_filter_call_bool_filter(const struct Thing *thing, MaxTngFil
  * @param param Parameters exchanged between filter calls.
  * @param maximizer Previous value which made a thing pass the filter.
  */
-long anywhere_thing_filter_call_neg_bool_filter(const struct Thing *thing, MaxTngFilterParam param, long maximizer)
-{
-    if ((param->class_id == -1) || (thing->class_id == param->class_id))
-    {
-        if (thing_matches_model(thing,param->model_id))
-        {
-            if ((param->plyr_idx == -1) || (thing->owner == param->plyr_idx))
-            {
-                Thing_Bool_Filter matcher_cb = (Thing_Bool_Filter)param->tertiary_pointer;
-                if ((matcher_cb != NULL) && !matcher_cb(thing))
-                {
-                    return LONG_MAX;
-                }
-            }
-        }
-    }
-    // If conditions are not met, return -1 to be sure thing will not be returned.
-    return -1;
-}
-
-/**
- * Filter function.
- * @param thing The thing being checked.
- * @param param Parameters exchanged between filter calls.
- * @param maximizer Previous value which made a thing pass the filter.
- */
 long anywhere_thing_filter_is_trap_of_model_armed_and_owned_by(const struct Thing *thing, MaxTngFilterParam param, long maximizer)
 {
     if (thing->class_id == TCls_Trap)
@@ -1034,12 +977,10 @@ TngUpdateRet switch_object_on_destoyed_slab_to_new_owner(struct Thing *thing, Mo
 /**
  * Makes per game turn update of all things in given StructureList.
  * @param list List of things to process.
- * @return Returns checksum computed from status of all things in list.
  */
-TbBigChecksum update_things_in_list(struct StructureList *list)
+void update_things_in_list(struct StructureList *list)
 {
     SYNCDBG(18,"Starting");
-    TbBigChecksum sum = 0;
     unsigned long k = 0;
     int i = list->index;
     while (i != 0)
@@ -1061,7 +1002,6 @@ TbBigChecksum update_things_in_list(struct StructureList *list)
           }
       }
       set_previous_thing_position(thing);
-      sum += get_thing_checksum(thing);
       // Per-thing code ends
       k++;
       if (k > THINGS_COUNT)
@@ -1070,8 +1010,7 @@ TbBigChecksum update_things_in_list(struct StructureList *list)
         break;
       }
     }
-    SYNCDBG(19,"Finished, %d items, checksum %06lX",(int)k,(unsigned long)sum);
-    return sum;
+    SYNCDBG(19,"Finished, %d items",(int)k);
 }
 
 /**
@@ -1183,22 +1122,18 @@ void update_things(void)
     optimised_lights = 0;
     total_lights = 0;
     do_lights = game.lish.light_enabled;
-    TbBigChecksum sum = 0;
-    sum += update_things_in_list(&game.thing_lists[TngList_Creatures]);
+    update_things_in_list(&game.thing_lists[TngList_Creatures]);
     update_creatures_not_in_list();
-    player_packet_checksum_add(my_player_number,sum,"creatures");
-    sum = 0;
-    sum += update_things_in_list(&game.thing_lists[TngList_Traps]);
-    sum += update_things_in_list(&game.thing_lists[TngList_Shots]);
-    sum += update_things_in_list(&game.thing_lists[TngList_Objects]);
-    sum += update_things_in_list(&game.thing_lists[TngList_Effects]);
-    sum += update_things_in_list(&game.thing_lists[TngList_EffectElems]);
-    sum += update_things_in_list(&game.thing_lists[TngList_DeadCreatrs]);
-    sum += update_things_in_list(&game.thing_lists[TngList_EffectGens]);
-    sum += update_things_in_list(&game.thing_lists[TngList_Doors]);
+    update_things_in_list(&game.thing_lists[TngList_Traps]);
+    update_things_in_list(&game.thing_lists[TngList_Shots]);
+    update_things_in_list(&game.thing_lists[TngList_Objects]);
+    update_things_in_list(&game.thing_lists[TngList_Effects]);
+    update_things_in_list(&game.thing_lists[TngList_EffectElems]);
+    update_things_in_list(&game.thing_lists[TngList_DeadCreatrs]);
+    update_things_in_list(&game.thing_lists[TngList_EffectGens]);
+    update_things_in_list(&game.thing_lists[TngList_Doors]);
     update_things_sounds_in_list(&game.thing_lists[TngList_AmbientSnds]);
     update_cave_in_things();
-    player_packet_checksum_add(my_player_number,sum,"things");
     game.map_changed_for_nagivation = 0;
     SYNCDBG(9,"Finished");
 }
@@ -1833,27 +1768,6 @@ long do_to_all_things_of_class_and_model(int tngclass, int tngmodel, Thing_Bool_
     return n;
 }
 
-/** Finds on whole map a thing owned by given player, which matches given bool filter.
- *
- * @param pos_x Position to search around X coord.
- * @param pos_y Position to search around Y coord.
- * @param plyr_idx Player whose things will be searched. Allies are not included, use -1 to select all.
- * @return The target thing pointer, or invalid thing pointer if not found.
- */
-struct Thing *get_nearest_object_owned_by_and_matching_bool_filter(MapCoord pos_x, MapCoord pos_y, PlayerNumber plyr_idx, Thing_Bool_Filter matcher_cb)
-{
-    SYNCDBG(19,"Starting");
-    Thing_Maximizer_Filter filter = near_map_block_thing_filter_call_bool_filter;
-    struct CompoundTngFilterParam param;
-    param.class_id = TCls_Object;
-    param.model_id = -1;
-    param.plyr_idx = plyr_idx;
-    param.primary_number = pos_x;
-    param.secondary_number = pos_y;
-    param.tertiary_pointer = (void *)matcher_cb;
-    return get_nth_thing_of_class_with_filter(filter, &param, 0);
-}
-
 /** Finds on whole map a thing owned by given player, which matches given criteria.
  *
  * @param pos_x Position to search around X coord.
@@ -1873,48 +1787,6 @@ struct Thing *get_nearest_thing_of_class_and_model_owned_by(MapCoord pos_x, MapC
     param.secondary_number = pos_y;
     param.tertiary_number = LONG_MAX;
     return get_nth_thing_of_class_with_filter(filter, &param, 0);
-}
-
-/** Finds on whole map nth thing owned by given player, which matches given bool filter.
- *
- * @param pos_x Position to search around X coord.
- * @param pos_y Position to search around Y coord.
- * @param plyr_idx Player whose things will be searched. Allies are not included, use -1 to select all.
- * @return The target thing pointer, or invalid thing pointer if not found.
- */
-struct Thing *get_nth_creature_owned_by_and_matching_bool_filter(PlayerNumber plyr_idx, Thing_Bool_Filter matcher_cb, long n)
-{
-    SYNCDBG(19,"Starting");
-    Thing_Maximizer_Filter filter = anywhere_thing_filter_call_bool_filter;
-    struct CompoundTngFilterParam param;
-    param.class_id = TCls_Creature;
-    param.model_id = CREATURE_ANY;
-    param.plyr_idx = plyr_idx;
-    param.primary_number = -1;
-    param.secondary_number = -1;
-    param.tertiary_pointer = (void *)matcher_cb;
-    return get_nth_thing_of_class_with_filter(filter, &param, n);
-}
-
-/** Finds on whole map nth thing owned by given player, which fails to match given bool filter.
- *
- * @param pos_x Position to search around X coord.
- * @param pos_y Position to search around Y coord.
- * @param plyr_idx Player whose things will be searched. Allies are not included, use -1 to select all.
- * @return The target thing pointer, or invalid thing pointer if not found.
- */
-struct Thing *get_nth_creature_owned_by_and_failing_bool_filter(PlayerNumber plyr_idx, Thing_Bool_Filter matcher_cb, long n)
-{
-    SYNCDBG(19,"Starting");
-    Thing_Maximizer_Filter filter = anywhere_thing_filter_call_neg_bool_filter;
-    struct CompoundTngFilterParam param;
-    param.class_id = TCls_Creature;
-    param.model_id = CREATURE_ANY;
-    param.plyr_idx = plyr_idx;
-    param.primary_number = -1;
-    param.secondary_number = -1;
-    param.tertiary_pointer = (void *)matcher_cb;
-    return get_nth_thing_of_class_with_filter(filter, &param, n);
 }
 
 struct Thing* get_nearest_enemy_creature_in_sight_and_range_of_trap(struct Thing* traptng)
@@ -2630,41 +2502,6 @@ long count_player_creatures_not_counting_to_total(PlayerNumber plyr_idx)
 long count_player_diggers_not_counting_to_total(PlayerNumber plyr_idx)
 {
     return count_player_list_creatures_of_model_matching_bool_filter(plyr_idx, CREATURE_DIGGER, creature_is_kept_in_custody_by_enemy_or_dying);
-}
-
-GoldAmount compute_player_backpay_total(const struct Dungeon* dungeon)
-{
-    SYNCDBG(18, "Starting");
-    GoldAmount backpay = 0;
-    unsigned long k = 0;
-    int i = dungeon->creatr_list_start;
-    while (i != 0)
-    {
-        struct Thing* thing = thing_get(i);
-        TRACE_THING(thing);
-        struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
-        if (thing_is_invalid(thing) || creature_control_invalid(cctrl))
-        {
-            ERRORLOG("Jump to invalid creature detected");
-            break;
-        }
-        if (cctrl->paydays_advanced >= 0)
-        {
-            break;
-        }
-        i = cctrl->players_next_creature_idx;
-        // Thing list loop body
-        backpay += calculate_correct_creature_pay(thing);
-        // Thing list loop body ends
-        k++;
-        if (k > CREATURES_COUNT)
-        {
-            ERRORLOG("Infinite loop detected when sweeping creatures list");
-            break;
-        }
-    }
-    SYNCDBG(19, "Finished");
-    return backpay;
 }
 
 GoldAmount compute_player_payday_total(const struct Dungeon *dungeon)
@@ -3763,38 +3600,6 @@ TbBool gold_pile_with_maximum_at_xy(MapSubtlCoord stl_x, MapSubtlCoord stl_y)
   return false;
 }
 
-struct Thing* get_player_creature_in_range_around_any_enemy_heart(PlayerNumber plyr_idx, ThingModel crmodel, MapSubtlDelta range)
-{
-    int n = GAME_RANDOM(PLAYERS_COUNT);
-    for (int i = 0; i < PLAYERS_COUNT; i++, n = (n + 1) % PLAYERS_COUNT)
-    {
-        if (!players_are_enemies(plyr_idx, n))
-            continue;
-        struct Thing* heartng = get_player_soul_container(n);
-        if (thing_exists(heartng))
-        {
-            struct Thing* creatng = get_creature_in_range_of_model_owned_and_controlled_by(heartng->mappos.x.val, heartng->mappos.y.val, range, crmodel, plyr_idx);
-            if (!thing_is_invalid(creatng)) {
-                return creatng;
-            }
-        }
-    }
-    return INVALID_THING;
-}
-
-struct Thing* get_player_creature_in_range_around_own_heart(PlayerNumber plyr_idx, ThingModel crmodel, MapSubtlDelta range)
-{
-        struct Thing* heartng = get_player_soul_container(plyr_idx); //todo backup hearts
-        if (thing_exists(heartng))
-        {
-            struct Thing* creatng = get_creature_in_range_of_model_owned_and_controlled_by(heartng->mappos.x.val, heartng->mappos.y.val, range, crmodel, plyr_idx);
-            if (!thing_is_invalid(creatng)) {
-                return creatng;
-            }
-        }
-    return INVALID_THING;
-}
-
 /** Finds thing on revealed subtiles around given position, which matches given bool filter.
  *
  * @param pos_x Position to search around X coord.
@@ -3830,26 +3635,6 @@ struct Thing *get_creature_in_range_who_is_enemy_of_able_to_attack_and_not_specd
     Thing_Maximizer_Filter filter = near_map_block_thing_filter_is_enemy_of_able_to_attack_and_not_specdigger;
     struct CompoundTngFilterParam param;
     param.plyr_idx = plyr_idx;
-    param.primary_number = pos_x;
-    param.secondary_number = pos_y;
-    return get_thing_spiral_near_map_block_with_filter(pos_x, pos_y, distance_stl*distance_stl, filter, &param);
-}
-
-/** Finds nearest creature on subtiles in range around given position, who is owned by given player.
- *
- * @param pos_x Position to search around X coord.
- * @param pos_y Position to search around Y coord.
- * @param distance_stl Max distance, in subtiles. Will work properly only for odd numbers (1,3,5,7...).
- * @param plyr_idx Player whose revealed subtiles around will be searched.
- * @return The creature thing pointer, or invalid thing pointer if not found.
- */
-struct Thing *get_creature_in_range_of_model_owned_and_controlled_by(MapCoord pos_x, MapCoord pos_y, MapSubtlDelta distance_stl, long crmodel, PlayerNumber plyr_idx)
-{
-    SYNCDBG(19,"Starting");
-    Thing_Maximizer_Filter filter = near_map_block_thing_filter_is_creature_of_model_owned_and_controlled_by;
-    struct CompoundTngFilterParam param;
-    param.plyr_idx = plyr_idx;
-    param.model_id = crmodel;
     param.primary_number = pos_x;
     param.secondary_number = pos_y;
     return get_thing_spiral_near_map_block_with_filter(pos_x, pos_y, distance_stl*distance_stl, filter, &param);
@@ -4146,12 +3931,6 @@ struct Thing* get_nearest_object_with_tooltip_at_position(MapSubtlCoord stl_x, M
         return get_object_around_owned_by_and_matching_bool_filter(
             subtile_coord_center(stl_x), subtile_coord_center(stl_y), -1, thing_is_object_with_mandatory_tooltip);
     }
-}
-
-struct Thing *get_nearest_object_at_position(MapSubtlCoord stl_x, MapSubtlCoord stl_y)
-{
-  return get_object_around_owned_by_and_matching_bool_filter(
-        subtile_coord_center(stl_x), subtile_coord_center(stl_y), -1, thing_is_object);
 }
 
 struct Thing *get_nearest_thing_at_position(MapSubtlCoord stl_x, MapSubtlCoord stl_y)

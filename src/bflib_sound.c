@@ -193,11 +193,6 @@ long S3DSetSoundReceiverOrientation(int ori_a, int ori_b, int ori_c)
     return 1;
 }
 
-void S3DSetSoundReceiverFlags(unsigned long nflags)
-{
-    Receiver.flags = nflags;
-}
-
 void S3DSetSoundReceiverSensitivity(unsigned short nsensivity)
 {
     Receiver.sensivity = nsensivity;
@@ -314,11 +309,6 @@ void S3DSetLineOfSightFunction(S3D_LineOfSight_Func callback)
 void S3DSetDeadzoneRadius(long dzradius)
 {
     deadzone_radius = dzradius;
-}
-
-long S3DGetDeadzoneRadius(void)
-{
-    return deadzone_radius;
 }
 
 SoundEmitterID get_emitter_id(struct SoundEmitter *emit)
@@ -675,11 +665,11 @@ void play_atmos_sound(SoundSmplTblID smpl_idx)
     SoundVolume volume_scale = LbLerp(0, FULL_LOUDNESS, (float)settings.sound_volume/127.0); // [0-127] rescaled to [0-256]
     SoundVolume adjusted_volume = (atmos_sound_volume * volume_scale) / FULL_LOUDNESS;
 
-    int ATMOS_SOUND_PITCH = (73 + (UNSYNC_RANDOM(10) * 6));
+    int ATMOS_SOUND_PITCH = (73 + (SOUND_RANDOM(10) * 6));
     // ATMOS0 has bigger range in pitch than other atmos sounds.
     if (smpl_idx == 1013)
     {
-        ATMOS_SOUND_PITCH = (54 + (UNSYNC_RANDOM(16) * 4));
+        ATMOS_SOUND_PITCH = (54 + (SOUND_RANDOM(16) * 4));
     }
     if (Non3DEmitter != 0)
     {

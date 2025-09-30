@@ -1502,6 +1502,17 @@ static int lua_Create_effect_at_pos(lua_State *L)
     lua_pushThing(L,script_create_effect(&pos, effect_id, height));
     return 1;
 }
+static int lua_Create_effect_at_coords(lua_State* L)
+{
+    EffectOrEffElModel effect_id = luaL_checkEffectOrEffElModel(L, 1);
+
+    struct Coord3d pos;
+    pos.x.val = luaL_checkinteger(L, 2);
+    pos.y.val = luaL_checkinteger(L, 3);
+    pos.z.val = luaL_checkinteger(L, 4);
+    lua_pushThing(L, script_create_effect(&pos, effect_id, 0));
+    return 1;
+}
 
 static int lua_Create_effects_line(lua_State *L)
 {
@@ -2005,7 +2016,7 @@ static int lua_run_dkscript_command(lua_State *L)
 }
 
 
-static int lua_Get_string(lua_State *L)
+static int lua_get_string(lua_State *L)
 {
     long msg_id    = luaL_checkinteger(L, 1);
     const char* msg = get_string(msg_id);
@@ -2016,6 +2027,15 @@ static int lua_Get_string(lua_State *L)
         return 1;
     }
     lua_pushstring(L, msg);
+    return 1;
+}
+
+static int lua_get_floor_height(lua_State* L)
+{
+    MapSubtlCoord stl_x = luaL_checkstl_x(L, 1);
+    MapSubtlCoord stl_y = luaL_checkstl_y(L, 2);
+    MapSubtlCoord stl_z = get_floor_height(stl_x, stl_y);
+    lua_pushinteger(L, stl_z);
     return 1;
 }
 
@@ -2158,6 +2178,7 @@ static const luaL_Reg global_methods[] = {
 //Effects
     {"CreateEffect"                 ,lua_Create_effect                   },
     {"CreateEffectAtPos"            ,lua_Create_effect_at_pos            },
+   { "CreateEffectAtCoords"         ,lua_Create_effect_at_coords         },
     {"CreateEffectsLine"            ,lua_Create_effects_line             },
 
 //Other
@@ -2186,7 +2207,8 @@ static const luaL_Reg global_methods[] = {
     {"GetThingsOfClass",                lua_get_things_of_class},
     {"IsActionpointActivatedByPlayer",  lua_is_action_point_activated_by_player},
     {"GetSlab",                         lua_get_slab},
-    {"GetString",                       lua_Get_string},
+    {"GetString",                       lua_get_string},
+    {"GetFloorHeight",                  lua_get_floor_height},
     {"GetRoomsOfPlayerAndType",         lua_get_rooms_of_player_and_kind},
 
 //usecase specific functions

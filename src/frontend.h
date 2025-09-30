@@ -31,7 +31,7 @@ extern "C" {
 // Limits for GUI arrays
 #define ACTIVE_BUTTONS_COUNT        86
 #define MENU_LIST_ITEMS_COUNT       51
-#define FRONTEND_BUTTON_INFO_COUNT 119
+#define FRONTEND_BUTTON_INFO_COUNT 113
 #define NET_MESSAGES_COUNT           8
 #define NET_MESSAGE_LEN             64
 // Sprite limits
@@ -274,6 +274,8 @@ extern int frontend_menu_state;
 extern int load_game_scroll_offset;
 extern unsigned char video_gamma_correction;
 extern MenuID vid_change_query_menu;
+extern TbBool right_click_tag_mode_toggle;
+extern unsigned char default_tag_mode;
 
 // *** SPRITES ***
 extern struct TbSpriteSheet *font_sprites;

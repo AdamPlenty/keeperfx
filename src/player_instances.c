@@ -599,7 +599,7 @@ long pinstfm_zoom_to_heart(struct PlayerInfo *player, long *n)
         pos.z.val = thing->mappos.z.val + (thing->solid_size_z / 2);
         move_thing_in_map(thing, &pos);
   }
-  if (player->instance_remain_rurns <= 8)
+  if (player->instance_remain_turns <= 8)
     LbPaletteFade(zoom_to_heart_palette, 8, Lb_PALETTE_FADE_OPEN);
   return 0;
 }
@@ -678,7 +678,7 @@ long pinstfm_zoom_out_of_heart(struct PlayerInfo *player, long *n)
         dstcam->mappos.x.val = thing->mappos.x.val + deltax;
         dstcam->mappos.y.val = thing->mappos.y.val + deltay;
     }
-    if (player->instance_remain_rurns >= 8)
+    if (player->instance_remain_turns >= 8)
       LbPaletteFade(engine_palette, 8, Lb_PALETTE_FADE_OPEN);
     return 0;
 }
@@ -859,7 +859,7 @@ long pinstfm_zoom_to_position(struct PlayerInfo *player, long *n)
     else
       y = player->zoom_to_pos_y;
     if ((player->zoom_to_pos_x == x) && (player->zoom_to_pos_y == y))
-        player->instance_remain_rurns = 0;
+        player->instance_remain_turns = 0;
     cam->mappos.x.val = x;
     cam->mappos.y.val = y;
     return 0;
@@ -885,7 +885,7 @@ void set_player_instance(struct PlayerInfo *player, long ninum, TbBool force)
     {
         player->instance_num = ninum%PLAYER_INSTANCES_COUNT;
         struct PlayerInstanceInfo* inst_info = &player_instance_info[player->instance_num];
-        player->instance_remain_rurns = inst_info->length_turns;
+        player->instance_remain_turns = inst_info->length_turns;
         InstncInfo_Func callback = inst_info->start_cb;
         if (callback != NULL) {
             callback(player, &inst_info->start_callback_parameters[0]);
@@ -901,16 +901,16 @@ void process_player_instance(struct PlayerInfo *player)
     if (player->instance_num <= 0) {
         return;
     }
-    if (player->instance_remain_rurns > 0)
+    if (player->instance_remain_turns > 0)
     {
-        player->instance_remain_rurns--;
+        player->instance_remain_turns--;
         inst_info = &player_instance_info[player->instance_num%PLAYER_INSTANCES_COUNT];
         callback = inst_info->maintain_cb;
         if (callback != NULL) {
             callback(player, &inst_info->maintain_end_callback_parameter);
         }
     }
-    if (player->instance_remain_rurns == 0)
+    if (player->instance_remain_turns == 0)
     {
         inst_info = &player_instance_info[player->instance_num%PLAYER_INSTANCES_COUNT];
         player->instance_num = PI_Unset;
@@ -1063,32 +1063,6 @@ TbBool is_thing_directly_controlled(const struct Thing *thing)
         return (thing->index == player->controlled_thing_idx);
     case PI_PsngrCtLeave: // Leaving the possessed creature
         break;
-    default:
-        ERRORLOG("Bad player %d instance %d",(int)thing->owner,(int)player->instance_num);
-        break;
-    }
-    return false;
-}
-
-TbBool is_thing_query_controlled(const struct Thing *thing)
-{
-    if (!thing_exists(thing))
-        return false;
-    if (is_neutral_thing(thing))
-        return false;
-    struct PlayerInfo* player = get_player(thing->owner);
-    if ( (player->work_state != PSt_CreatrInfo) && (player->work_state != PSt_CreatrInfoAll) )
-        return false;
-    switch (player->instance_num)
-    {
-    case PI_QueryCrtr:
-        return (thing->index == player->controlled_thing_idx);
-    case PI_UnqueryCrtr:
-        return (thing->index == player->influenced_thing_idx);
-    case PI_Unset:
-    case PI_Whip: // Whip can be used at any time by comp. assistant
-    case PI_WhipEnd:
-        return (thing->index == player->controlled_thing_idx);
     default:
         ERRORLOG("Bad player %d instance %d",(int)thing->owner,(int)player->instance_num);
         break;

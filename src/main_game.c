@@ -169,6 +169,7 @@ static void init_level(void)
 
     luascript_loaded = open_lua_script(get_selected_level_number());
     // Load configs which may have per-campaign part, and can even be modified within a level
+    recheck_all_mod_exist();
     init_custom_sprites(get_selected_level_number());
     load_stats_files();
     check_and_auto_fix_stats();
@@ -316,6 +317,7 @@ void startup_saved_packet_game(void)
     settings.isometric_view_zoom_level = game.packet_save_head.isometric_view_zoom_level;
     settings.frontview_zoom_level = game.packet_save_head.frontview_zoom_level;
     settings.isometric_tilt = game.packet_save_head.isometric_tilt;
+    settings.highlight_mode = game.packet_save_head.highlight_mode;
     IMPRISON_BUTTON_DEFAULT = game.packet_save_head.default_imprison_tendency;
     FLEE_BUTTON_DEFAULT = game.packet_save_head.default_flee_tendency;
     set_skip_heart_zoom_feature(game.packet_save_head.skip_heart_zoom);
@@ -463,6 +465,7 @@ void clear_complete_game(void)
     else
         set_selected_level_number(first_singleplayer_level());
     game_num_fps = start_params.num_fps;
+    game_num_fps_draw = start_params.num_fps_draw;
     game.mode_flags = start_params.mode_flags;
     set_flag_value(game.system_flags, GSF_AllowOnePlayer, start_params.one_player);
     game.computer_chat_flags = start_params.computer_chat_flags;
@@ -483,15 +486,28 @@ void init_seeds()
     else
 #endif
     {
-        // Initialize random seeds (the value may be different
-        // on computers in MP, as it shouldn't affect game actions)
-        game.unsync_rand_seed = (unsigned long)LbTimeSec();
-        game.action_rand_seed = (game.packet_save_head.action_seed != 0) ? game.packet_save_head.action_seed : game.unsync_rand_seed;
-        if ((game.system_flags & GSF_NetworkActive) != 0)
-        {
+        // Unsynced seeds - these values will be different per-player in multiplayer
+        unsigned long calender_time = (unsigned long)LbTimeSec();
+        game.unsync_random_seed = calender_time * 9007 + 9011;  // Use prime multipliers for different seeds
+        game.sound_random_seed = calender_time * 7919 + 7927;
+
+        // If doing -packetload then use the replay's stored seed
+        if (game.packet_save_head.action_seed != 0) {
+            game.action_random_seed = game.packet_save_head.action_seed;
+        } else {
+            game.action_random_seed = calender_time * 9311 + 9319;
+        }
+
+        // Network seed must be synchronized for multiplayer before setting derived seeds
+        if ((game.system_flags & GSF_NetworkActive) != 0) {
             init_network_seed();
         }
-        start_seed = game.action_rand_seed;
-        lua_set_random_seed(game.action_rand_seed);
+
+        // AI and Player systems get their own derived seeds
+        game.ai_random_seed = game.action_random_seed * 9377 + 9391;
+        game.player_random_seed = game.action_random_seed * 9473 + 9479;
+        
+        initial_replay_seed = game.action_random_seed;
+        lua_set_random_seed(game.action_random_seed);
     }
 }

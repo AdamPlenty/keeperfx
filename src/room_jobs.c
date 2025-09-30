@@ -273,7 +273,7 @@ struct Thing *find_object_in_room_for_creature_matching_bool_filter(struct Thing
         WARNLOG("Room with no slabs detected!");
         return rettng;
     }
-    long selected = CREATURE_RANDOM(creatng, room->slabs_count);
+    long selected = THING_RANDOM(creatng, room->slabs_count);
     unsigned long k = 0;
     long i = room->slabs_list;
     while (i != 0)
@@ -386,33 +386,6 @@ TbBool creature_setup_random_move_for_job_in_room_f(struct Thing *creatng, struc
         SYNCDBG(4,"%s: No position to move %s index %d in %s room",func_name,thing_model_name(creatng),(int)creatng->index,room_code_name(room->kind));
     }
     return result;
-}
-
-TbBool room_is_correct_to_perform_job(const struct Thing *creatng, const struct Room *room, CreatureJob jobpref)
-{
-    if ((get_room_role_for_job(jobpref) != RoRoF_None) && (!room_role_matches(room->kind,get_room_role_for_job(jobpref)))) {
-        return false;
-    }
-    if (creatng->owner == room->owner)
-    {
-        if (creature_is_for_dungeon_diggers_list(creatng)) {
-            if ((get_flags_for_job(jobpref) & JoKF_OwnedDiggers) == 0)
-                return false;
-        } else {
-            if ((get_flags_for_job(jobpref) & JoKF_OwnedCreatures) == 0)
-                return false;
-        }
-    } else
-    {
-        if (creature_is_for_dungeon_diggers_list(creatng)) {
-            if ((get_flags_for_job(jobpref) & JoKF_EnemyDiggers) == 0)
-                return false;
-        } else {
-            if ((get_flags_for_job(jobpref) & JoKF_EnemyCreatures) == 0)
-                return false;
-        }
-    }
-    return true;
 }
 
 /**

@@ -24,7 +24,6 @@
 
 #define LIGHT_MAX_RANGE       256 // Large enough to cover the whole map
 #define LIGHTS_COUNT         2048
-#define MINIMUM_LIGHTNESS    8192
 
 #ifdef __cplusplus
 extern "C" {
@@ -127,7 +126,6 @@ void light_stat_refresh();
 void light_set_lights_on(char state);
 void light_set_light_minimum_size_to_cache(long lgt_id, long a2, long a3);
 void light_signal_update_in_area(long sx, long sy, long ex, long ey);
-long light_get_total_dynamic_lights(void);
 void light_export_system_state(struct LightSystemState *lightst);
 void light_import_system_state(const struct LightSystemState *lightst);
 TbBool lights_stats_debug_dump(void);

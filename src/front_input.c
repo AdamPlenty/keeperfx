@@ -95,6 +95,10 @@ TbBool first_person_see_item_desc = false;
 long old_mx;
 long old_my;
 
+//arbitrary state machine, not deserving own enum
+int synthetic_left = 0;
+int synthetic_right = 0;
+
 /******************************************************************************/
 void get_dungeon_control_nonaction_inputs(void);
 void get_creature_control_nonaction_inputs(void);
@@ -183,12 +187,6 @@ void update_gui_layer()
 short game_is_busy_doing_gui_string_input(void)
 {
   return (input_button != NULL);
-}
-
-short current_view_supports_status_menu()
-{
-    struct PlayerInfo* player = get_my_player();
-    return (player->view_type != PVT_MapScreen);
 }
 
 int is_game_key_pressed(long key_id, long *val, TbBool ignore_mods)
@@ -342,38 +340,38 @@ void clip_frame_skip(void)
 
 void increaseFrameskip(void)
 {
-    if (game.frame_skip < 2)
-    {
-        game.frame_skip ++;
+    // Default no longer using frame_skip=1, which will not change the logic frame rate but the makes the game will less smooth. But it can still be passed in through parameters
+    int level = 16;
+    for (int i=0; i<10; i++) {
+        if (game.frame_skip < level)
+            break;
+        level <<= 1;
     }
-    else if (game.frame_skip < 16)
-    {
-        game.frame_skip += 2;
-    }
-    else
-    {
-        game.frame_skip += (game.frame_skip/3);
-    }
+    int adj = level/8;
+    game.frame_skip += adj;
     clip_frame_skip();
-    show_onscreen_msg(game_num_fps+game.frame_skip, "Frame skip %d",game.frame_skip);
+    char speed_txt[256] = "normal";
+    if (game.frame_skip > 0)
+        sprintf(speed_txt, "x%ld", game.frame_skip);
+    show_onscreen_msg(game_num_fps*(game.frame_skip+1), "Fast Forward %s", speed_txt);
 }
 
 void decreaseFrameskip(void)
 {
-    if (game.frame_skip <= 2)
-    {
-        game.frame_skip --;
+    // Defaul no longer using frame_skip=1, which will not change the logic frame rate but the makes the game will less smooth. But it can still be passed in through parameters
+    int level = 16;
+    for (int i=0; i<10; i++) {
+        if (game.frame_skip <= level)
+            break;
+        level <<= 1;
     }
-    else if (game.frame_skip <= 16)
-    {
-        game.frame_skip -= 2;
-    }
-    else
-    {
-        game.frame_skip -= (game.frame_skip/4);
-    }
+    int adj = level/8;
+    game.frame_skip -= adj;
     clip_frame_skip();
-    show_onscreen_msg(game_num_fps+game.frame_skip, "Frame skip %d",game.frame_skip);
+    char speed_txt[256] = "normal";
+    if (game.frame_skip > 0)
+        sprintf(speed_txt, "x%ld", game.frame_skip);
+    show_onscreen_msg(game_num_fps*(game.frame_skip+1), "Fast Forward %s", speed_txt);
 }
 
 /**
@@ -602,11 +600,7 @@ short get_global_inputs(void)
   // Code for debugging purposes
   if ( is_key_pressed(KC_D,KMod_ALT) )
   {
-    JUSTMSG("REPORT for gameturn %lu",game.play_gameturn);
-    // Timing report
-    JUSTMSG("Now time is %ld, last loop time was %ld, clock is %ld, requested fps is %ld",
-        LbTimerClock(),last_loop_time,clock(),game_num_fps);
-    test_variable = !test_variable;
+    JUSTMSG("REPORT. gameturn is %lu, requested fps is %ld",game.play_gameturn, game_num_fps);
   }
 
   for (int idx = KC_F1; idx <= KC_F8; idx++)
@@ -1849,8 +1843,6 @@ short get_creature_control_action_inputs(void)
 
 void get_packet_control_mouse_clicks(void)
 {
-    static int synthetic_left = 0; //arbitrary state machine, not deserving own enum
-    static int synthetic_right = 0;
     SYNCDBG(8,"Starting");
 
     if (flag_is_set(game.operation_flags, GOF_Paused))

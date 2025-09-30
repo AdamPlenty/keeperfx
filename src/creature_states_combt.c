@@ -1976,7 +1976,7 @@ CrInstance get_postal_instance_to_use(const struct Thing *thing, unsigned long d
     // Choose a random index from the list of usable instances
     if (av_postal_inst_num > 0)
     {
-        short rand_inst_idx = CREATURE_RANDOM(thing, av_postal_inst_num);
+        short rand_inst_idx = THING_RANDOM(thing, av_postal_inst_num);
         return av_postal_inst[rand_inst_idx];
     }
     else
@@ -2781,9 +2781,9 @@ long waiting_combat_move(struct Thing *figtng, struct Thing *enmtng, long enmdis
     // Randomly jump waiting for combat
     if (thing_touching_floor(figtng))
     {
-        if (CREATURE_RANDOM(figtng, 6) == 0)
+        if (THING_RANDOM(figtng, 6) == 0)
         {
-            figtng->veloc_push_add.z.val += CREATURE_RANDOM(figtng, 80) + 40;
+            figtng->veloc_push_add.z.val += THING_RANDOM(figtng, 80) + 40;
             figtng->state_flags |= TF1_PushAdd;
         }
     }
@@ -3248,36 +3248,9 @@ TbBool creature_look_for_enemy_heart_combat(struct Thing *thing)
     return true;
 }
 
-
-TbBool creature_look_for_enemy_heart_snipe(struct Thing* thing)
-{
-    SYNCDBG(19, "Starting for %s index %d", thing_model_name(thing), (int)thing->index);
-    TRACE_THING(thing);
-    if ((get_creature_model_flags(thing) & CMF_NoEnmHeartAttack) != 0) {
-        return false;
-    }
-    struct Thing* heartng;
-    // If already fighting dungeon heart, skip the rest
-    if (get_creature_state_besides_interruptions(thing) == CrSt_CreatureObjectSnipe) {
-        struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
-        heartng = thing_get(cctrl->combat.battle_enemy_idx);
-        if (thing_is_dungeon_heart(heartng)) {
-            return false;
-        }
-    }
-    heartng = get_enemy_soul_container_creature_can_see(thing);
-    if (thing_is_invalid(heartng) || !(creature_can_navigate_to(thing, &heartng->mappos, NavRtF_Default)))
-    {
-        return false;
-    }
-    TRACE_THING(heartng);
-    set_creature_object_snipe(thing, heartng);
-    return true;
-}
-
 struct Thing* check_for_object_to_fight(struct Thing* thing) //just traps now, could be expanded to non-trap objects
 {
-    long m = CREATURE_RANDOM(thing, SMALL_AROUND_SLAB_LENGTH);
+    long m = THING_RANDOM(thing, SMALL_AROUND_SLAB_LENGTH);
     for (long n = 0; n < SMALL_AROUND_SLAB_LENGTH; n++)
     {
         MapSlabCoord slb_x = subtile_slab(thing->mappos.x.stl.num) + (long)small_around[m].delta_x;
@@ -3332,7 +3305,7 @@ TbBool creature_look_for_enemy_object_combat(struct Thing* thing)
 
 struct Thing *check_for_door_to_fight(struct Thing *thing)
 {
-    long m = CREATURE_RANDOM(thing, SMALL_AROUND_SLAB_LENGTH);
+    long m = THING_RANDOM(thing, SMALL_AROUND_SLAB_LENGTH);
     for (long n = 0; n < SMALL_AROUND_SLAB_LENGTH; n++)
     {
         MapSlabCoord slb_x = subtile_slab(thing->mappos.x.stl.num) + (long)small_around[m].delta_x;
@@ -3414,7 +3387,7 @@ TbResult creature_retreat_from_combat(struct Thing *figtng, struct Thing *enmtng
     // Second try
     pos.x.val = figtng->mappos.x.val;
     pos.y.val = figtng->mappos.y.val;
-    if (CREATURE_RANDOM(figtng, 2) == 0)
+    if (THING_RANDOM(figtng, 2) == 0)
         i = 1;
     else
         i = -1;
@@ -3445,7 +3418,7 @@ short creature_attack_rooms(struct Thing *creatng)
         return 1;
     }
     // If we're not (or no longer) on room tile, find adjacent one
-    int n = CREATURE_RANDOM(creatng, SMALL_AROUND_LENGTH);
+    int n = THING_RANDOM(creatng, SMALL_AROUND_LENGTH);
     for (int i = 0; i < SMALL_AROUND_LENGTH; i++)
     {
         MapSubtlCoord stl_x = creatng->mappos.x.stl.num + STL_PER_SLB * (int)small_around[n].delta_x;
@@ -3515,48 +3488,6 @@ short creature_damage_walls(struct Thing *creatng)
     set_start_state(creatng);
     return 0;
 
-}
-
-/**
- * Projects damage made by a creature attack on given target.
- * Gives a best estimate of the damage, but shouldn't be used to actually inflict it.
- * @param firing The creature which will be shooting.
- * @param target The target creature.
- */
-long project_creature_attack_target_damage(const struct Thing *firing, const struct Thing *target)
-{
-    // Determine most likely shot of the firing creature
-    CrInstance inst_id;
-    long dist = get_combat_distance(firing, target);
-    struct CreatureModelConfig* crconf = creature_stats_get_from_thing(firing);
-    if (crconf->attack_preference == AttckT_Ranged) {
-        inst_id = get_best_combat_weapon_instance_to_use(firing, dist,2);
-        if (inst_id == CrInst_NULL) {
-            inst_id = get_best_combat_weapon_instance_to_use(firing, dist,4);
-        }
-    } else {
-        inst_id = get_best_combat_weapon_instance_to_use(firing, dist,4);
-        if (inst_id == CrInst_NULL) {
-            inst_id = get_best_combat_weapon_instance_to_use(firing, dist,2);
-        }
-    }
-    if (inst_id == CrInst_NULL) {
-        // It seem the creatures cannot currently attack each other
-        return CrInst_NULL;
-    }
-    // Get shot model from instance
-    ThingModel shot_model;
-    {
-        struct InstanceInfo* inst_inf = creature_instance_info_get(inst_id);
-        //TODO CREATURES Instance doesn't necessarily contain shot model, that depends on callback
-        // Do a check to make sure the instance fires a shot
-        shot_model = inst_inf->func_params[0];
-    }
-    long damage = project_creature_shot_damage(firing, shot_model);
-    // Adjust the damage with target creature defense.
-    long dexterity = calculate_correct_creature_dexterity(firing);
-    damage = project_damage_of_melee_shot(dexterity, damage, target);
-    return damage;
 }
 
 /******************************************************************************/

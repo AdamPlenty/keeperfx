@@ -173,7 +173,8 @@ struct CreatureControl {
     */
     long annoyance_level[5];
     unsigned char mood_flags;
-unsigned char sound_flag;
+    unsigned char footstep_variant;
+    unsigned char footstep_counter;
     /** Lair room index, that is the room which holds creature's lair object. */
     unsigned short lair_room_id;
     /** Lair object thing index. */
@@ -325,6 +326,8 @@ unsigned char sound_flag;
     struct CoordDelta3d moveaccel;
     unsigned char bloody_footsteps_turns;
     short kills_num;
+    short kills_num_allied;
+    short kills_num_enemy;
     short max_speed;
     HitPoints max_health;
     short move_speed;
@@ -410,6 +413,7 @@ unsigned char sound_flag;
     SpellKind active_teleport_spell;
     SpellKind active_timebomb_spell;
     short vertical_speed;
+    GameTurnDelta hand_blocked_turns;
 };
 
 struct Persons {
@@ -445,7 +449,6 @@ struct CreatureControl *creature_control_get(long cctrl_idx);
 struct CreatureControl *creature_control_get_from_thing(const struct Thing *thing);
 TbBool creature_control_invalid(const struct CreatureControl *cctrl);
 TbBool creature_control_exists(const struct CreatureControl *cctrl);
-TbBool creature_control_exists_in_thing(const struct Thing *thing);
 void clear_creature_instance(struct Thing *thing);
 long i_can_allocate_free_control_structure(void);
 struct CreatureControl *allocate_free_control_structure(void);

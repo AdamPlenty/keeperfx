@@ -230,36 +230,6 @@ TbBool light_create_light_adv(VALUE *init_data)
     return true;
 }
 
-long light_get_total_dynamic_lights(void)
-{
-    return light_total_dynamic_lights;
-}
-
-long light_get_total_stat_lights(void)
-{
-    return light_total_stat_lights;
-}
-
-long light_get_rendered_dynamic_lights(void)
-{
-    return light_rendered_dynamic_lights;
-}
-
-long light_get_rendered_optimised_dynamic_lights(void)
-{
-    return light_rendered_optimised_dynamic_lights;
-}
-
-long light_get_updated_stat_lights(void)
-{
-    return light_updated_stat_lights;
-}
-
-long light_get_out_of_date_stat_lights(void)
-{
-    return light_out_of_date_stat_lights;
-}
-
 void light_export_system_state(struct LightSystemState *lightst)
 {
     memcpy(lightst->bitmask,light_bitmask,sizeof(light_bitmask));
@@ -398,7 +368,7 @@ TbBool lights_stats_debug_dump(void)
 
 void light_set_light_never_cache(long lgt_id)
 {
-    if (lgt_id <= 0)
+    if (lgt_id <= 0 || lgt_id >= LIGHTS_COUNT)
     {
         ERRORLOG("Attempt to set size of invalid light %d",(int)lgt_id);
         return;
@@ -414,7 +384,7 @@ void light_set_light_never_cache(long lgt_id)
 
 long light_is_light_allocated(long lgt_id)
 {
-    if (lgt_id <= 0)
+    if (lgt_id <= 0 || lgt_id >= LIGHTS_COUNT)
         return false;
     struct Light* lgt = &game.lish.lights[lgt_id];
     if ((lgt->flags & LgtF_Allocated) == 0)
@@ -709,7 +679,6 @@ void clear_stat_light_map(void)
 {
     game.lish.global_ambient_light = 32;
     game.lish.light_enabled = 0;
-    game.lish.light_rand_seed = 0;
     for (unsigned long y = 0; y < (game.map_subtiles_y + 1); y++)
     {
         for (unsigned long x = 0; x < (game.map_subtiles_x + 1); x++)
@@ -1729,7 +1698,7 @@ static char light_render_light_dynamic_uncached(struct Light *lgt, int radius, i
                                 int distance_x = min((lgt->mappos.x.val - subtile_center_x), (subtile_center_x - lgt->mappos.x.val));
                                 int distance_y = min((lgt->mappos.y.val - subtile_center_y), (subtile_center_y - lgt->mappos.y.val));
                                 int diagonal_length2 = LbDiagonalLength(distance_x, distance_y);
-                                lighting_tables_idx = intensity * (radius - diagonal_length2) / radius;
+                                lighting_tables_idx = intensity * max(0, radius - diagonal_length2) / radius;
                                 if ( lighting_tables_idx <= game.lish.global_ambient_light )
                                     return lighting_tables_idx;
                                 unsigned short *stl_lightness_ptr2 = &game.lish.subtile_lightness[get_subtile_number(stl_x,stl_y)];
@@ -2024,7 +1993,7 @@ static char light_render_light(struct Light* lgt)
   {
     int rand_minimum = (lgt->intensity - 1) << 8;
     intensity = (lgt->intensity << 8) + 257;
-    render_intensity = rand_minimum + LIGHT_RANDOM(513);
+    render_intensity = rand_minimum + UNSYNC_RANDOM(513);
   }
   else
   {

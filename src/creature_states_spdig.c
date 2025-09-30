@@ -68,40 +68,6 @@ extern "C" {
 #endif
 /******************************************************************************/
 
-TbBool creature_is_doing_digger_activity(const struct Thing* thing)
-{
-    CrtrStateId i = get_creature_state_besides_interruptions(thing);
-    switch (i)
-    {
-        // case CrSt_ImpDoingNothing:
-        case CrSt_ImpArrivesAtDigDirt:
-        case CrSt_ImpArrivesAtMineGold:
-        case CrSt_ImpDigsDirt:
-        case CrSt_ImpMinesGold:
-        case CrSt_ImpDropsGold:
-        case CrSt_ImpLastDidJob:
-        case CrSt_ImpArrivesAtImproveDungeon:
-        case CrSt_ImpImprovesDungeon:
-        case CrSt_ImpToking:
-        case CrSt_ImpPicksUpGoldPile:
-        case CrSt_MoveBackwardsToPosition:
-        case CrSt_CreatureDropBodyInLair:
-        case CrSt_CreatureDropBodyInPrison:
-        case CrSt_ImpArrivesAtConvertDungeon:
-        case CrSt_ImpConvertsDungeon:
-        case CrSt_ImpArrivesAtReinforce:
-        case CrSt_ImpReinforces:
-        case CrSt_CreaturePicksUpSpellObject:
-        case CrSt_CreatureDropsSpellObjectInLibrary:
-        case CrSt_CreaturePicksUpCorpse:
-        case CrSt_CreatureDropsCorpseInGraveyard:
-        case CrSt_CreatureGoingToSafetyForToking:
-            return true;
-        default:
-            return false;
-    }
-}
-
 struct Thing *check_for_empty_trap_for_imp(struct Thing *spdigtng, long tngmodel)
 {
     TRACE_THING(spdigtng);
@@ -517,7 +483,7 @@ static TbBool check_out_undug_drop_place(struct Thing *spdigtng)
     MapSubtlCoord dig_place_stl_y = 0;
     SubtlCodedCoords stl_num;
     int task_idx = 0;
-    int rand = CREATURE_RANDOM(spdigtng,3);
+    int rand = THING_RANDOM(spdigtng,3);
 
     for (long n = 0; n < SMALL_AROUND_LENGTH; n++)
     {
@@ -1278,7 +1244,7 @@ short imp_drops_gold(struct Thing *spdigtng)
     }
     if ( (gold_added > 0) || (gold_created) )
     {
-        thing_play_sample(spdigtng, UNSYNC_RANDOM(3) + 32, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
+        thing_play_sample(spdigtng, SOUND_RANDOM(3) + 32, NORMAL_PITCH, 0, 3, 0, 2, FULL_LOUDNESS);
         if (game.conf.rules.workers.digger_work_experience != 0)
         {
             struct CreatureControl* cctrl = creature_control_get_from_thing(spdigtng);
@@ -1502,7 +1468,7 @@ short imp_toking(struct Thing *creatng)
     }
     if (cctrl->instance_id == CrInst_NULL)
     {
-        if (CREATURE_RANDOM(creatng, 8))
+        if (THING_RANDOM(creatng, 8))
         {
             set_creature_instance(creatng, CrInst_RELAXING, 0, 0);
         }

@@ -5658,7 +5658,7 @@ static void draw_stripey_line(long x1,long y1,long x2,long y2,unsigned char line
     {
         remainder = (a_start - a1) * distance_b % distance_a; // initialise remainder for loop
     }
-    long b_start =  b1 + ( b_increment * (a_start - a1) * distance_b / distance_a );
+    long b_start =  (distance_a == 0) ? b1 : b1 + ( b_increment * (a_start - a1) * distance_b / distance_a );
     if (remainder >= remainder_limit)
     {
         remainder -= distance_a;
@@ -7489,6 +7489,7 @@ static unsigned short get_thing_shade(struct Thing* thing)
 {
     MapSubtlCoord stl_x;
     MapSubtlCoord stl_y;
+    long minimum_lightness = game.conf.rules.game.thing_minimum_illumination << 8;
     long lgh[2][2]; // the dimensions are lgh[y][x]
     long shval;
     long fract_x;
@@ -7505,11 +7506,11 @@ static unsigned short get_thing_shade(struct Thing* thing)
         * (lgh[0][1] + (fract_y * (lgh[1][1] - lgh[0][1]) >> 8)
         - (lgh[0][0] + (fract_y * (lgh[1][0] - lgh[0][0]) >> 8))) >> 8)
         + (lgh[0][0] + (fract_y * (lgh[1][0] - lgh[0][0]) >> 8));
-    if (shval < MINIMUM_LIGHTNESS)
+    if (shval < minimum_lightness)
     {
-        shval += (MINIMUM_LIGHTNESS>>2);
-        if (shval > MINIMUM_LIGHTNESS)
-            shval = MINIMUM_LIGHTNESS;
+        shval += (minimum_lightness >>2);
+        if (shval > minimum_lightness)
+            shval = minimum_lightness;
     } else
     {
         // Max lightness value - make sure it won't exceed our limits
@@ -7581,8 +7582,16 @@ static void draw_keepersprite(long x, long y, const struct KeeperSprite * kspr, 
     if (clipped_height <= 0) {
         return;
     }
-    const TbSpriteData * sprite_data_ptr = (kspr_idx < KEEPERSPRITE_ADD_OFFSET) ?
-        keepsprite[kspr_idx] : &keepersprite_add[kspr_idx - KEEPERSPRITE_ADD_OFFSET];
+    const TbSpriteData * sprite_data_ptr = NULL;
+    if (kspr_idx >= 0) {
+        if (kspr_idx >= KEEPERSPRITE_ADD_OFFSET) {
+            if (kspr_idx - KEEPERSPRITE_ADD_OFFSET < KEEPERSPRITE_ADD_NUM) {
+                sprite_data_ptr = &keepersprite_add[kspr_idx - KEEPERSPRITE_ADD_OFFSET];
+            }
+        } else if (kspr_idx < KEEPSPRITE_LENGTH) {
+            sprite_data_ptr = keepsprite[kspr_idx];
+        }
+    }
     if (sprite_data_ptr == NULL || *sprite_data_ptr == NULL) {
         WARNDBG(9,"Unallocated KeeperSprite %ld can't be drawn at (%ld,%ld)",kspr_idx,x,y);
         return;
@@ -7826,6 +7835,7 @@ static void prepare_jonty_remap_and_scale(long *scale, const struct BucketKindJo
     long shade;
     long shade_factor;
     long fade;
+    long minimum_lightness = game.conf.rules.game.thing_minimum_illumination << 8;
     thing = jspr->thing;
     if (lens_mode == 0)
     {
@@ -7833,7 +7843,7 @@ static void prepare_jonty_remap_and_scale(long *scale, const struct BucketKindJo
         if ((thing->rendering_flags & TRF_Unshaded) == 0)
             i = get_thing_shade(thing);
         else
-            i = MINIMUM_LIGHTNESS;
+            i = minimum_lightness;
         shade = i;
     } else
     if (jspr->depth_fade <= lfade_min)
@@ -7842,7 +7852,7 @@ static void prepare_jonty_remap_and_scale(long *scale, const struct BucketKindJo
         if ((thing->rendering_flags & TRF_Unshaded) == 0)
             i = get_thing_shade(thing);
         else
-            i = MINIMUM_LIGHTNESS;
+            i = minimum_lightness;
         shade = i;
     } else
     if (jspr->depth_fade < lfade_max)
@@ -7851,7 +7861,7 @@ static void prepare_jonty_remap_and_scale(long *scale, const struct BucketKindJo
         if ((thing->rendering_flags & TRF_Unshaded) == 0)
             i = get_thing_shade(thing);
         else
-            i = MINIMUM_LIGHTNESS;
+            i = minimum_lightness;
         shade = i * (long long)(lfade_max - fade) / fade_mmm;
     } else
     {

@@ -30,7 +30,7 @@ extern "C" {
 enum TbPacketAction {
         PckA_None = 0,
         PckA_QuitToMainMenu, // Quit
-        PckA_UnusedSlot002,
+        PckA_ForceApplicationClose,
         PckA_SaveGameAndQuit,
         PckA_NoOperation,
         PckA_FinishGame, // 5
@@ -68,7 +68,7 @@ enum TbPacketAction {
         PckA_SwitchView,
         PckA_UnusedSlot038,
         PckA_CtrlCrtrSetInstnc,
-        PckA_UnusedSlot040,//40
+        PckA_GenericLevelPower,//40
         PckA_HoldAudience,
         PckA_UnusedSlot042,
         PckA_UnusedSlot043,
@@ -184,6 +184,7 @@ enum TbPacketAction {
         PckA_SetRoomspaceDragPaint,
         PckA_PlyrQueryCreature,
         PckA_CheatGiveDoorTrap,
+        PckA_RoomspaceHighlightToggle,
 };
 
 /** Packet flags for non-action player operation. */
@@ -251,7 +252,7 @@ enum ChecksumKind {
 struct PlayerInfo;
 struct CatalogueEntry;
 
-extern unsigned long start_seed;
+extern unsigned long initial_replay_seed;
 
 /**
  * Stores data exchanged between players each turn and used to re-create their input.
@@ -287,6 +288,7 @@ struct PacketSaveHead {
     TbBool default_imprison_tendency;
     TbBool default_flee_tendency;
     TbBool skip_heart_zoom;
+    TbBool highlight_mode;
 };
 
 struct PacketEx
@@ -309,6 +311,7 @@ void unset_packet_control(struct Packet *pckt, unsigned long flag);
 void unset_players_packet_control(struct PlayerInfo *player, unsigned long flag);
 void set_players_packet_position(struct Packet *pckt, long x, long y, unsigned char context);
 void set_packet_pause_toggle(void);
+void force_application_close(void);
 void apply_default_flee_and_imprison_setting(void);
 TbBool process_dungeon_control_packet_clicks(long idx);
 TbBool process_players_dungeon_control_packet_action(long idx);
@@ -321,9 +324,7 @@ void process_pause_packet(long a1, long a2);
 void process_quit_packet(struct PlayerInfo *player, short complete_quit);
 void process_packets(void);
 void clear_packets(void);
-TbBigChecksum compute_players_checksum(void);
-void player_packet_checksum_add(PlayerNumber plyr_idx, TbBigChecksum sum, const char *area_name);
-short checksums_different(void);
+TbBigChecksum compute_replay_integrity(void);
 void post_init_packets(void);
 
 TbBool open_new_packet_file_for_save(void);

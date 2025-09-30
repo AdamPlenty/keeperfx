@@ -114,6 +114,7 @@
 #include "gui_soundmsgs.h"
 #include "gui_frontbtns.h"
 #include "frontmenu_ingame_tabs.h"
+#include "frontmenu_ingame_evnt.h"
 #include "ariadne.h"
 #include "sounds.h"
 #include "vidfade.h"
@@ -137,15 +138,16 @@
 #define strcasecmp _stricmp
 #endif
 
-int test_variable;
-
 char cmndline[CMDLN_MAXLEN+1];
 unsigned short bf_argc;
 char *bf_argv[CMDLN_MAXLEN+1];
 short do_draw;
 short default_loc_player = 0;
 struct StartupParameters start_params;
+char autostart_multiplayer_campaign[80] = "";
+int autostart_multiplayer_level = 0;
 long game_num_fps;
+long game_num_fps_draw = 0;
 
 unsigned char *blue_palette;
 unsigned char *red_palette;
@@ -193,8 +195,6 @@ unsigned char EngineSpriteDrawUsingAlpha;
 unsigned char temp_pal[768];
 unsigned char *lightning_palette;
 
-//static
-TbClockMSec last_loop_time=0;
 
 #ifdef __cplusplus
 extern "C" {
@@ -203,14 +203,13 @@ extern "C" {
 TbBool force_player_num = false;
 
 /******************************************************************************/
-
 extern void faststartup_network_game(CoroutineLoop *context);
 extern void faststartup_saved_packet_game(void);
 extern TngUpdateRet damage_creatures_with_physical_force(struct Thing *thing, ModTngFilterParam param);
-void first_gameturn_actions(void);
 extern CoroutineLoopState set_not_has_quit(CoroutineLoop *context);
 extern void startup_network_game(CoroutineLoop *context, TbBool local);
-
+void first_gameturn_actions(void);
+void compute_multiplayer_checksum_sync(void);
 /******************************************************************************/
 
 TbClockMSec timerstarttime = 0;
@@ -331,7 +330,7 @@ void process_keeper_spell_aura(struct Thing *thing)
     long delta_x;
     long delta_y;
     amp = 5 * thing->clipbox_size_xy / 8;
-    direction = CREATURE_RANDOM(thing, DEGREES_360);
+    direction = THING_RANDOM(thing, DEGREES_360);
     delta_x = (amp * LbSinL(direction) >> 8);
     delta_y = (amp * LbCosL(direction) >> 8);
     pos.x.val = thing->mappos.x.val + (delta_x >> 8);
@@ -421,7 +420,7 @@ long apply_wallhug_force_to_boulder(struct Thing *thing)
   pos.x.val = move_coord_with_angle_x(thing->mappos.x.val,speed,thing->move_angle_xy);
   pos.y.val = move_coord_with_angle_y(thing->mappos.y.val,speed,thing->move_angle_xy);
   pos.z.val = thing->mappos.z.val;
-  if ( (ACTION_RANDOM(8) == 0) && (!thing->velocity.z.val ) )
+  if ( (GAME_RANDOM(8) == 0) && (!thing->velocity.z.val ) )
   {
     if ( thing_touching_floor(thing) )
     {
@@ -907,6 +906,7 @@ void init_keeper(void)
     init_spiral_steps();
     init_key_to_strings();
     // Load configs which may have per-campaign part, and even be modified within a level
+    recheck_all_mod_exist();
     init_custom_sprites(SPRITE_LAST_LEVEL);
     load_stats_files();
     check_and_auto_fix_stats();
@@ -1645,6 +1645,19 @@ void clear_things_and_persons_data(void)
     {
       memset(&game.cctrl_data[i], 0, sizeof(struct CreatureControl));
     }
+
+    // Initialize synced free things list
+    game.synced_free_things_start_index = 0;
+    for (i = 1; i <= SYNCED_THINGS_COUNT; i++)
+    {
+        game.synced_free_things[i-1] = i;
+    }
+    // Initialize unsynced free things list
+    game.unsynced_free_things_start_index = 0;
+    for (i = SYNCED_THINGS_COUNT + 1; i < SYNCED_THINGS_COUNT + UNSYNCED_THINGS_COUNT; i++)
+    {
+        game.unsynced_free_things[i - SYNCED_THINGS_COUNT - 1] = i;
+    }
 }
 
 void clear_computer(void)
@@ -1719,10 +1732,16 @@ void delete_all_thing_structures(void)
           delete_thing_structure(thing, 1);
       }
     }
-    for (i=0; i < THINGS_COUNT-1; i++) {
-      game.free_things[i] = i+1;
+    for (i=0; i < SYNCED_THINGS_COUNT; i++) {
+      game.synced_free_things[i] = i+1;
     }
-    game.free_things_start_index = 0;
+    game.synced_free_things_start_index = 0;
+    // Reset unsynced free things list
+    for (i = SYNCED_THINGS_COUNT + 1; i < SYNCED_THINGS_COUNT + UNSYNCED_THINGS_COUNT; i++)
+    {
+        game.unsynced_free_things[i - SYNCED_THINGS_COUNT - 1] = i;
+    }
+    game.unsynced_free_things_start_index = 0;
 }
 
 void delete_all_structures(void)
@@ -1748,7 +1767,9 @@ void clear_game_for_summary(void)
     clear_stat_light_map();
     clear_mapwho();
     game.entrance_room_id = 0;
-    game.action_rand_seed = 0;
+    game.action_random_seed = 0;
+    game.ai_random_seed = 0;
+    game.player_random_seed = 0;
     game.operation_flags &= ~GOF_Paused;
     clear_columns();
     clear_action_points();
@@ -1778,7 +1799,9 @@ void clear_game_for_save(void)
     light_initialise();
     clear_mapwho();
     game.entrance_room_id = 0;
-    game.action_rand_seed = 0;
+    game.action_random_seed = 0;
+    game.ai_random_seed = 0;
+    game.player_random_seed = 0;
     clear_columns();
     clear_players_for_save();
     clear_dungeons();
@@ -2568,8 +2591,8 @@ long update_cave_in(struct Thing *thing)
     turns_alive = game.play_gameturn - thing->creation_turn;
     if ((turns_alive != 0) && ((turns_between < 1) || (3 * turns_between / 4 == turns_alive % turns_between)))
     {
-        pos.x.val = thing->mappos.x.val + UNSYNC_RANDOM(128);
-        pos.y.val = thing->mappos.y.val + UNSYNC_RANDOM(128);
+        pos.x.val = thing->mappos.x.val + THING_RANDOM(thing, 128);
+        pos.y.val = thing->mappos.y.val + THING_RANDOM(thing, 128);
         pos.z.val = get_floor_height_at(&pos) + 384;
         create_effect(&pos, TngEff_HarmlessGas4, owner);
     }
@@ -2596,7 +2619,7 @@ long update_cave_in(struct Thing *thing)
         if ((powerst->duration < 10) || ((thing->health % (powerst->duration / 10)) == 0))
         {
             int round_idx;
-            round_idx = CREATURE_RANDOM(thing, AROUND_TILES_COUNT);
+            round_idx = THING_RANDOM(thing, AROUND_TILES_COUNT);
             set_coords_to_slab_center(&pos, subtile_slab(thing->mappos.x.val + 3 * around[round_idx].delta_x), subtile_slab(thing->mappos.y.val + 3 * around[round_idx].delta_y));
             if (subtile_has_slab(coord_subtile(pos.x.val), coord_subtile(pos.y.val)) && valid_cave_in_position(thing->owner, coord_subtile(pos.x.val), coord_subtile(pos.y.val)))
             {
@@ -2713,6 +2736,7 @@ void update(void)
         PaletteFadePlayer(player);
         process_armageddon();
         update_global_lighting();
+        compute_multiplayer_checksum_sync();
 #if (BFDEBUG_LEVEL > 9)
         lights_stats_debug_dump();
         things_stats_debug_dump();
@@ -3250,20 +3274,65 @@ TbBool keeper_screen_swap(void)
  */
 TbBool keeper_wait_for_next_turn(void)
 {
+    const long double tick_ns_one_sec = 1000000000.0;
+    long double tick_ns_one_frame = -1;
     if ((game.view_mode_flags & GNFldD_WaitSleepMode) != 0)
     {
         // No idea when such situation occurs
-        TbClockMSec sleep_end = last_loop_time + 1000;
-        LbSleepUntil(sleep_end);
-        last_loop_time = LbTimerClock();
-        return true;
+        tick_ns_one_frame = tick_ns_one_sec;
     }
-    if (game.frame_skip == 0)
+    if (game.frame_skip >= 0)
     {
         // Standard delaying system
-        TbClockMSec sleep_end = last_loop_time + 1000/game_num_fps;
-        LbSleepUntil(sleep_end);
-        last_loop_time = LbTimerClock();
+        long num_fps = game_num_fps;
+        if (game.frame_skip > 0)
+            num_fps *= game.frame_skip;
+
+        tick_ns_one_frame = tick_ns_one_sec/num_fps;
+    }
+
+    if (tick_ns_one_frame >= 0) {
+        static long double tick_ns_last_turn = 0;
+
+        long double tick_ns_cur = get_time_tick_ns();
+        long double tick_ns_used = tick_ns_cur - tick_ns_last_turn;
+        long double tick_ns_delay = tick_ns_one_frame - tick_ns_used;
+
+        long double tick_ns_end = tick_ns_cur;
+        // tick_ns_used: every level, initialized_time_point will be reset, so tick_ns_used may be less than 0 when enter level for the non-first time, Skip it directly to solve the problem.
+        if (tick_ns_delay > 0 && tick_ns_used >= 0) {
+            tick_ns_end = tick_ns_cur + tick_ns_delay;
+            LbSleepUntilExt(tick_ns_end);
+        }
+        tick_ns_last_turn = tick_ns_end;
+        return true;
+    }
+
+    return false;
+}
+
+
+TbBool keeper_wait_for_next_draw(void)
+{
+    // fps.draw is currently unable to work properly with frame_skip
+    if (game_num_fps_draw > 0 && is_feature_on(Ft_DeltaTime) == true && game.frame_skip == 0)
+    {
+        const long double tick_ns_one_sec = 1000000000.0;
+        const long double tick_ns_one_frame = tick_ns_one_sec/game_num_fps_draw;
+
+        static long double tick_ns_last_draw = 0;
+        long double tick_ns_cur = get_time_tick_ns();
+        long double tick_ns_used = tick_ns_cur - tick_ns_last_draw;
+        long double tick_ns_delay = tick_ns_one_frame - tick_ns_used;
+
+        long double tick_ns_end = tick_ns_cur;
+        // tick_ns_used: every level, initialized_time_point will be reset, so tick_ns_used may be less than 0 when enter level for the non-first time, Skip it directly to solve the problem.
+        if (tick_ns_delay > 0 && tick_ns_used >= 0) {
+            tick_ns_end = tick_ns_cur + tick_ns_delay;
+            LbSleepUntilExt(tick_ns_end);
+        }
+        tick_ns_last_draw = tick_ns_end;
+
         return true;
     }
     return false;
@@ -3274,12 +3343,8 @@ TbBool keeper_wait_for_screen_focus(void)
     do {
         if ( !LbWindowsControl() )
         {
-          if ((game.system_flags & GSF_NetworkActive) == 0)
-          {
-            exit_keeper = 1;
-            break;
-          }
-          SYNCLOG("Alex's point reached");
+          force_application_close();
+          break;
         }
         if (LbIsActive())
           return true;
@@ -3322,6 +3387,9 @@ void gameplay_loop_logic()
     }
 
     frametime_start_measurement(Frametime_Logic);
+    if (frametime_enabled())
+        framerate_measurement_capture(Framerate_Logic);
+
     if ((game.flags_font & FFlg_NetworkTimeout) != 0)
     {
         if (game.play_gameturn == 4)
@@ -3367,6 +3435,8 @@ void gameplay_loop_draw()
         do_draw = false;
     }
     if ( do_draw ) {
+        if (frametime_enabled())
+            framerate_measurement_capture(Framerate_Draw);
         keeper_screen_redraw();
     }
     keeper_wait_for_screen_focus();
@@ -3400,9 +3470,20 @@ void gameplay_loop_timestep()
             keeper_wait_for_next_turn();
         }
     }
+
     if (game.turns_packetoff == game.play_gameturn) {
         exit_keeper = 1;
     }
+
+    if (game_num_fps_draw > 0 && is_feature_on(Ft_DeltaTime) == true) {
+        keeper_wait_for_next_draw();
+
+        if (game.turns_packetoff == game.play_gameturn) {
+            exit_keeper = 1;
+        }
+    }
+
+
     frametime_end_measurement(Frametime_Sleep);
 }
 
@@ -3418,14 +3499,20 @@ void keeper_gameplay_loop(void)
     SYNCDBG(0,"Entering the gameplay loop for level %d",(int)get_loaded_level_number());
     KeeperSpeechClearEvents();
     LbErrorParachuteUpdate(); // For some reasone parachute keeps changing; Remove when won't be needed anymore
+
     initial_time_point();
+    LbSleepExtInit();
+
     //the main gameplay loop starts
     while ((!quit_game) && (!exit_keeper))
     {
         frametime_start_measurement(Frametime_FullFrame);
+        if (frametime_enabled())
+            framerate_measurement_capture(Framerate_FullFrame);
         gameplay_loop_logic();
         gameplay_loop_draw();
         gameplay_loop_timestep();
+
         frametime_end_measurement(Frametime_FullFrame);
     } // end while
     SYNCDBG(0,"Gameplay loop finished after %lu turns",(unsigned long)game.play_gameturn);
@@ -3605,8 +3692,8 @@ static TbBool wait_at_frontend(void)
       faststartup_saved_packet_game();
       return true;
     }
-    // Prepare to enter network/standard game
-    if ((game.operation_flags & GOF_SingleLevel) != 0)
+    // Load single-player level directly from command line arguments (-server and -connect bypass this, autoloading a multiplayer map is handled elsewhere)
+    if ((game.operation_flags & GOF_SingleLevel) != 0 && !(game_flags2 & (GF2_Connect | GF2_Server)))
     {
       faststartup_network_game(&loop);
       coroutine_process(&loop);
@@ -3641,12 +3728,9 @@ static TbBool wait_at_frontend(void)
     {
       if (!LbWindowsControl())
       {
-        if ((game.system_flags & GSF_NetworkActive) == 0)
-        {
-            exit_keeper = 1;
-            SYNCDBG(0,"Windows Control exit condition invoked");
-            break;
-        }
+        force_application_close();
+        SYNCDBG(0,"Windows Control exit condition invoked");
+        break;
       }
       update_mouse();
       update_key_modifiers();
@@ -3881,7 +3965,6 @@ short process_command_line(unsigned short argc, char *argv[])
   AssignCpuKeepers = 0;
   SoundDisabled = 0;
   // Note: the working log file is set up in LbBullfrogMain
-  LbErrorLogSetup(nullptr, nullptr, 1);
 
   set_default_startup_parameters();
 
@@ -3949,6 +4032,12 @@ short process_command_line(unsigned short argc, char *argv[])
           start_params.num_fps = atoi(pr2str);
           start_params.overrides[Clo_GameTurns] = true;
       } else
+      if (strcasecmp(parstr, "fps_draw") == 0)
+      {
+          narg++;
+          start_params.num_fps_draw = atoi(pr2str);
+          start_params.overrides[Clo_FramesPerSecond] = true;
+      } else
       if (strcasecmp(parstr, "human") == 0)
       {
           narg++;
@@ -3963,11 +4052,13 @@ short process_command_line(unsigned short argc, char *argv[])
       {
         set_flag(start_params.operation_flags, GOF_SingleLevel);
         level_num = atoi(pr2str);
+        autostart_multiplayer_level = atoi(pr2str);
         narg++;
       } else
       if ( strcasecmp(parstr,"campaign") == 0 )
       {
         strcpy(start_params.selected_campaign, pr2str);
+        strcpy(autostart_multiplayer_campaign, pr2str);
         narg++;
       } else
       if ( strcasecmp(parstr,"altinput") == 0 )
@@ -4109,6 +4200,10 @@ short process_command_line(unsigned short argc, char *argv[])
         WARNLOG("Flag '%s' disabled for release builds.", parstr);
 #endif // FUNCTESTING
       }
+      else if (strcasecmp(parstr, "log") == 0)
+      {
+          narg++;
+      }
       else if(strcasecmp(parstr, "exitonfailedtest") == 0)
       {
 #ifdef FUNCTESTING
@@ -4169,12 +4264,29 @@ short process_command_line(unsigned short argc, char *argv[])
   return (bad_param==0);
 }
 
+const char* determine_log_filename(unsigned short argument_count, char *argument_values[])
+{
+    for (int argument_index = 1; argument_index < argument_count; argument_index++) {
+        if (argument_values[argument_index] && (argument_values[argument_index][0] == '-' || argument_values[argument_index][0] == '/')) {
+            char* argument_name = argument_values[argument_index] + 1;
+            if (strcasecmp(argument_name, "log") == 0 && argument_index + 1 < argument_count) {
+                remove("keeperfx.log");
+                return argument_values[argument_index + 1];
+            }
+        }
+    }
+    return log_file_name;
+}
+
 int LbBullfrogMain(unsigned short argc, char *argv[])
 {
     short retval;
     retval=0;
-    LbErrorLogSetup("/", log_file_name, 5);
-
+    
+    // Determine correct log file based on command line flags
+    const char* selected_log_file_name = determine_log_filename(argc, argv);
+    LbErrorLogSetup("/", selected_log_file_name, 5);
+    
     retval = process_command_line(argc,argv);
     if (retval < 1)
     {

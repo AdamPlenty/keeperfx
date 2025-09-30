@@ -46,7 +46,7 @@ extern "C" {
  */
 struct CreatureControl *creature_control_get(long cctrl_idx)
 {
-  if ((cctrl_idx < 1) || (cctrl_idx > CREATURES_COUNT))
+  if ((cctrl_idx < 1) || (cctrl_idx >= CREATURES_COUNT))
     return INVALID_CRTR_CONTROL;
   return game.persons.cctrl_lookup[cctrl_idx];
 }
@@ -57,7 +57,7 @@ struct CreatureControl *creature_control_get(long cctrl_idx)
  */
 struct CreatureControl *creature_control_get_from_thing(const struct Thing *thing)
 {
-  if ((thing->ccontrol_idx < 1) || (thing->ccontrol_idx > CREATURES_COUNT))
+  if ((thing->ccontrol_idx < 1) || (thing->ccontrol_idx >= CREATURES_COUNT))
     return INVALID_CRTR_CONTROL;
   return game.persons.cctrl_lookup[thing->ccontrol_idx];
 }
@@ -77,11 +77,6 @@ TbBool creature_control_exists(const struct CreatureControl *cctrl)
   if ((cctrl->creature_control_flags & CCFlg_Exists) == 0)
       return false;
   return true;
-}
-
-TbBool creature_control_exists_in_thing(const struct Thing *thing)
-{
-    return creature_control_exists(creature_control_get_from_thing(thing));
 }
 
 long i_can_allocate_free_control_structure(void)
@@ -303,7 +298,7 @@ void play_creature_sound(struct Thing *thing, long snd_idx, long priority, long 
         SYNCDBG(19,"No sample %ld for creature %d",snd_idx,thing->model);
         return;
     }
-    long i = UNSYNC_RANDOM(crsound->count);
+    long i = SOUND_RANDOM(crsound->count);
     SYNCDBG(18,"Playing sample %ld (index %ld) for creature %d",snd_idx,crsound->index+i,thing->model);
     if ( use_flags ) {
         thing_play_sample(thing, crsound->index+i, NORMAL_PITCH, 0, 3, 8, priority, FULL_LOUDNESS);
@@ -322,7 +317,7 @@ void play_creature_sound_and_create_sound_thing(struct Thing *thing, long snd_id
         SYNCDBG(14,"No sample %ld for creature %d",snd_idx,thing->model);
         return;
     }
-    long i = UNSYNC_RANDOM(crsound->count);
+    long i = SOUND_RANDOM(crsound->count);
     struct Thing* efftng = create_effect(&thing->mappos, TngEff_Dummy, thing->owner);
     if (!thing_is_invalid(efftng)) {
         thing_play_sample(efftng, crsound->index+i, NORMAL_PITCH, 0, 3, 0, sound_priority, FULL_LOUDNESS);
