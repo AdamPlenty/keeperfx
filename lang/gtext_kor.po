@@ -2175,10 +2175,9 @@ msgid "Group: Not used"
 msgstr "그룹 : 사용 안함"
 
 #: guitext:239
+#, fuzzy
 msgctxt "Creature spell"
-msgid ""
-"Invisibility: Cast on one of your minions, it makes the host creature "
-"invisible to all enemies. Unless they possess a subnatural Sight."
+msgid "Invisibility: Makes the creature invisible to all enemies. Unless they possess a subnatural Sight."
 msgstr ""
 "투명화: 여러분의 하수인들 중 하나에 던져지면, 모든 적에게 해당 피조물이 보이"
 "지 않게 됩니다. 특이 시야가 없는 한 말이죠."
@@ -2224,7 +2223,7 @@ msgstr "우박 폭풍: 우박이 맹위를 떨칩니다."
 #: guitext:245
 msgctxt "Creature spell"
 msgid ""
-"Slow: Slows down the target creature, making it attacks and movement delayed."
+"Slow: Slows down the target creature, making its attacks and movement delayed."
 msgstr "느려림: 대상 피조물의 속도가 느려져 공격 및 이동이 지연됩니다."
 
 #: guitext:246
@@ -4558,11 +4557,10 @@ msgstr ""
 #: guitext:648
 msgctxt "Keeper spell description"
 msgid ""
-"Create Imp: Create summon a new Imp anywhere in your dungeon. LMB select. "
-"[18.2]"
+"Create Imp: Summon a new Imp anywhere in your dungeon. LMB select."
 msgstr ""
 "임프 생성 : 던전 어디에든 새로운 임프를 만듭니다. 왼쪽 마우스 단추로 선택합니"
-"다. [18.2]"
+"다."
 
 #: guitext:649
 msgctxt "Keeper spell description"
@@ -4610,27 +4608,23 @@ msgstr ""
 
 #: guitext:654
 msgctxt "Keeper spell description"
-msgid "Speed Monster: Increases the speed of your monsters. LMB select. [18.4]"
+msgid "Speed Monster: Increases the speed of your monsters."
 msgstr ""
-"몬스터 가속 : 몬스터의 속도가 빨라집니다. 왼쪽 마우스 단추로 선택합니다. "
-"[18.4]"
+"몬스터 가속 : 몬스터의 속도가 빨라집니다."
 
 #: guitext:655
 msgctxt "Keeper spell description"
 msgid ""
-"Protect Monster: Shields your creatures from attack. LBM select. [18.11]"
+"Protect Monster: Shields your creatures from attack."
 msgstr ""
-"몬스터 보호 : 여러분의 피조물을 공격으로부터 보호합니다. 왼쪽 마우스 단추로 "
-"선택합니다. [18.11]"
+"몬스터 보호 : 여러분의 피조물을 공격으로부터 보호합니다."
 
 #: guitext:656
 msgctxt "Keeper spell description"
 msgid ""
-"Conceal Monster: Makes your creatures invisible to the enemy. LMB select. "
-"[18.7]"
+"Conceal Monster: Makes your creatures invisible to the enemy."
 msgstr ""
-"몬스터 은닉: 적에게 당신의 생명체를 보이지 않게 만듭니다. 왼쪽 마우스 단추로 "
-"선택합니다. [18.7]"
+"몬스터 은닉: 적에게 당신의 생명체를 보이지 않게 만듭니다."
 
 #: guitext:657
 msgctxt "Keeper spell description"
@@ -5913,18 +5907,18 @@ msgstr "신규 레벨"
 
 #: guitext:889
 msgctxt "Menu interface message"
-msgid "Please insert Data Disk CD-ROM"
-msgstr "데이터 디스크 CD좀 넣어줘"
+msgid "Manufacturable: Creatures can manufacture this item in the Workshop."
+msgstr "제조 가능: 피조물이 이 아이템을 공방에서 제조할 수 있습니다."
 
 #: guitext:890
 msgctxt "Menu interface message"
-msgid "Please insert Dungeon Keeper CD-ROM"
-msgstr "던전 키퍼 CD좀 넣어주라"
+msgid "Workshop too small: Expand the Workshop to manufacture this item."
+msgstr "공방이 너무 작음: 이 아이템을 제조하려면 공방을 확장해야 합니다."
 
 #: guitext:891
 msgctxt "Menu interface message"
-msgid "Please insert The Deeper Dungeons CD-ROM"
-msgstr "던전 키퍼 CD좀 넣어 달라구"
+msgid "Not manufacturable: This item cannot be manufactured."
+msgstr "제조 불가: 이 아이템은 제조할 수 없습니다."
 
 #. DD Level Korros Tor first objective
 #: guitext:892
@@ -6782,12 +6776,12 @@ msgstr "애스미스트 섬"
 
 #: guitext:1013
 msgctxt "Menu interface item"
-msgid "Ancient Keeper campaign"
+msgid "Ancient Keeper"
 msgstr "고대 키퍼 캠패인"
 
 #: guitext:1014
 msgctxt "Menu interface item"
-msgid "Burdened Imps' Level Pack"
+msgid "Burdened Imps"
 msgstr "피해욧 임프의 레벨 팩"
 
 #: guitext:1015
@@ -6817,7 +6811,7 @@ msgstr "DzjeeAr의 25레벨 캠패인"
 
 #: guitext:1020
 msgctxt "Menu interface item"
-msgid "Evil Keeper campaign"
+msgid "Evil Keeper"
 msgstr "사악한 키퍼 캠패인"
 
 #: guitext:1021
@@ -6842,12 +6836,12 @@ msgstr "선한 캠패인"
 
 #: guitext:1025
 msgctxt "Menu interface item"
-msgid "Lord Vexer campaign"
+msgid "Lord Vexer"
 msgstr "백서경 캠패인"
 
 #: guitext:1026
 msgctxt "Menu interface item"
-msgid "Nikolai's Castles campaign"
+msgid "Nikolai's Castles"
 msgstr "니콜라이의 성 캠패인"
 
 #: guitext:1027
@@ -6857,17 +6851,17 @@ msgstr "던전 키퍼 - 새 게임+"
 
 #: guitext:1028
 msgctxt "Menu interface item"
-msgid "Post Ancient Keeper campaign"
+msgid "Post Ancient Keeper"
 msgstr "고대 키퍼 공표 캠패인"
 
 #: guitext:1029
 msgctxt "Menu interface item"
-msgid "Post Undead Keeper campaign"
+msgid "Post Undead Keeper"
 msgstr "언데드 키퍼 공표 캠패인"
 
 #: guitext:1030
 msgctxt "Menu interface item"
-msgid "Quest for the Hero campaign"
+msgid "Quest for the Hero"
 msgstr "영웅 퀘스트 캠패인"
 
 #: guitext:1031
@@ -6877,12 +6871,12 @@ msgstr "군주의 복수"
 
 #: guitext:1032
 msgctxt "Menu interface item"
-msgid "Twin Keepers Campaign"
+msgid "Twin Keepers"
 msgstr "쌍둥이 키퍼 캠패인"
 
 #: guitext:1033
 msgctxt "Menu interface item"
-msgid "Undead Keeper campaign"
+msgid "Undead Keeper"
 msgstr "언데드 키퍼 캠패인"
 
 #: guitext:1034 guitext:1035
@@ -6905,10 +6899,15 @@ msgctxt "Trap description"
 msgid "Sentry Trap: Stands guard and shoots at enemies in sight."
 msgstr "감시 함정: 경비병을 세워 눈에 보이는 적을 쏘세요."
 
-#: guitext:1039 guitext:1040
-msgctxt "Unused"
-msgid "Moo6"
-msgstr "Moo6"
+#: guitext:1039
+msgctxt "Trap names"
+msgid "Ballista Trap"
+msgstr "발리스타 함정"
+
+#: guitext:1040
+msgctxt "Trap description"
+msgid "Ballista Trap: Stands guard and shoots at enemies in sight."
+msgstr "발리스타 함정: 경비병을 세워 눈에 보이는 적을 쏘세요."
 
 #: guitext:1041
 msgctxt "Creature name"
@@ -6925,10 +6924,36 @@ msgctxt "Creature name"
 msgid "Time Mage"
 msgstr "시간 마법사"
 
-#: guitext:1044 guitext:1045 guitext:1046 guitext:1047 guitext:1048 guitext:1049
+#: guitext:1044
+msgctxt "Creature name"
+msgid "Bird"
+msgstr ""
+
+#: guitext:1045
+msgctxt "Creature name"
+msgid "Maiden"
+msgstr ""
+
+#: guitext:1046
+msgctxt "Creature name"
+msgid "Spiderling"
+msgstr ""
+
+#: guitext:1047
+msgctxt "Creature name"
+msgid "Goblin"
+msgstr ""
+
+#: guitext:1048
+msgctxt "Creature name"
+msgid "Fallen Angel"
+msgstr ""
+
+#: guitext:1049
 msgctxt "Unused"
 msgid "Moo7"
 msgstr ""
+
 #: guitext:1050
 msgctxt "Slab description"
 msgid "Rock Formation."
@@ -6945,8 +6970,9 @@ msgid "Dense Gold Seam: Holds a lot of wealth for your Imps to extract. "
 msgstr "높은 금맥: 당신의 임프가 추출할 수 있는 많은 부를 보유하고 있습니다."
 
 #: guitext:1053
+#, fuzzy
 msgctxt "Keeper spell name"
-msgid "Rebound"
+msgid "Magic Shield"
 msgstr "반사"
 
 #: guitext:1054
@@ -6961,7 +6987,7 @@ msgstr "느려림"
 
 #: guitext:1056
 msgctxt "Keeper spell name"
-msgid "Flight"
+msgid "Levitate"
 msgstr "비행"
 
 #: guitext:1057
@@ -6993,3 +7019,93 @@ msgstr "불행하게 만들기: 적의 모든 생물이 화가 납니다."
 msgctxt "Dungeon special decription"
 msgid "Weaken Walls: Destroys the fortifications of enemy walls."
 msgstr "벽 약화: 적의 벽 방어를 파괴합니다."
+
+#: guitext:1063
+msgctxt "Game controls"
+msgid "Tilt Up"
+msgstr ""
+
+#: guitext:1064
+msgctxt "Game controls"
+msgid "Tilt Down"
+msgstr ""
+
+#: guitext:1065
+msgctxt "Game controls"
+msgid "Reset Tilt"
+msgstr ""
+
+#: guitext:1066
+msgctxt "Creature spell"
+msgid "Heal Monster: The target creature is massively healed."
+msgstr ""
+
+#: guitext:1067
+msgctxt "Creature spell"
+msgid "Cleanse: Cures all negative effects inflicted on the creature."
+msgstr "정화: 생물에게 가해진 모든 부정적인 효과를 치료합니다."
+
+#: guitext:1068
+msgctxt "Creature spell"
+msgid "Cleanse Monster: Cures all negative effects inflicted on target creature."
+msgstr ""
+
+#: guitext:1069
+msgctxt "Keeper spell description"
+msgid "Magic Shield: Causes spells fired at the target to bounce back at the attacker."
+msgstr ""
+
+#: guitext:1070
+msgctxt "Keeper spell description"
+msgid "Levitate: Causes the target creature to take off from the ground and attack creatures from the air or cross lava unharmed."
+msgstr ""
+
+#: guitext:1071
+msgctxt "Keeper spell description"
+msgid "Sight: Allows the target creature to temporarily increase its awareness and notice the invisible."
+msgstr ""
+
+#: guitext:1072
+msgctxt "Keeper spell name"
+msgid "Recruit Tunneller"
+msgstr ""
+
+#: guitext:1073
+msgctxt "Keeper spell description"
+msgid "Recruit Tunneller: Summon a new Tunneller anywhere in your dungeon."
+msgstr ""
+
+#: guitext:1074 guitext:1075
+msgctxt "Unused"
+msgid "Moo8"
+msgstr ""
+
+#: guitext:1076
+msgctxt "Door name"
+msgid "Midas Door"
+msgstr ""
+
+#: guitext:1077
+msgctxt "Door description"
+msgid "Midas Door: This door consumes gold from the owner to stay completely indestructible. RMB zoom."
+msgstr ""
+
+#: guitext:1078
+msgctxt "Game controls"
+msgid "Ascend"
+msgstr ""
+
+#: guitext:1079
+msgctxt "Game controls"
+msgid "Descend"
+msgstr ""
+
+#: guitext:1080
+msgctxt "Creature spell"
+msgid "Familiar: Summons a companion to guard and assist the creature."
+msgstr ""
+
+#: guitext:1081
+msgctxt "Creature spell"
+msgid "Summon: Call upon temporary guardians to assist the creature in combat."
+msgstr ""

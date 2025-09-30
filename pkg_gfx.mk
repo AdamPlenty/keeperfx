@@ -54,6 +54,8 @@ pkg/ldata/fronttor.dat
 FRONTENDGFX = \
 pkg/data/legal32.raw \
 pkg/data/legal64.raw \
+pkg/data/legal-720p-wide.raw \
+pkg/data/legal-1080p-wide.raw \
 pkg/data/startfx32.raw \
 pkg/data/startfx64.raw \
 pkg/data/loading32.raw \
@@ -120,6 +122,7 @@ pkg/data/swipe03.dat \
 pkg/data/swipe04.dat \
 pkg/data/swipe05.dat \
 pkg/data/swipe06.dat \
+pkg/data/swipe07.dat \
 pkg/data/gmap64.raw \
 pkg/data/gmap32.raw \
 pkg/data/gmapbug.dat
@@ -135,6 +138,8 @@ pkg-landviews: $(LANDVIEWRAWS) $(LANDVIEWDATTABS)
 pkg-menugfx: $(TOTRUREGFX) $(FRONTENDGFX)
 
 pkg-enginegfx: $(ENGINEGFX)
+
+pkg-landviewtabs: $(LANDVIEWDATTABS)
 
 # Creation of land view image files for campaigns
 define define_campaign_landview_rule
@@ -168,13 +173,15 @@ $(foreach campaign,$(sort $(CAMPAIGNS)),$(eval $(call define_campaign_landview_r
 pkg/ldata/torture.pal:  gfx/menufx/torturescr/tortr_background.png gfx/menufx/torturescr/tortr_doora_open11.png gfx/menufx/torturescr/tortr_doorb_open11.png gfx/menufx/torturescr/tortr_doorc_open11.png gfx/menufx/torturescr/tortr_doord_open11.png gfx/menufx/torturescr/tortr_doore_open11.png gfx/menufx/torturescr/tortr_doorf_open11.png gfx/menufx/torturescr/tortr_doorg_open11.png gfx/menufx/torturescr/tortr_doorh_open11.png gfx/menufx/torturescr/tortr_doori_open11.png gfx/menufx/torturescr/cursor_horny.png tools/png2bestpal/res/color_tbl_basic.txt $(PNGTOBSPAL)
 pkg/data/legal32.pal:   gfx/menufx/loading/legal-32.png tools/png2bestpal/res/color_tbl_basic.txt $(PNGTOBSPAL)
 pkg/data/legal64.pal:   gfx/menufx/loading/legal-64.png tools/png2bestpal/res/color_tbl_basic.txt $(PNGTOBSPAL)
+pkg/data/legal-720p-wide.pal: gfx/menufx/loading/legal-720p-wide.png tools/png2bestpal/res/color_tbl_basic.txt $(PNGTOBSPAL)
+pkg/data/legal-1080p-wide.pal: gfx/menufx/loading/legal-1080p-wide.png tools/png2bestpal/res/color_tbl_basic.txt $(PNGTOBSPAL)
 pkg/data/startfx32.pal: gfx/menufx/loading/startupfx-32.png tools/png2bestpal/res/color_tbl_basic.txt $(PNGTOBSPAL)
 pkg/data/startfx64.pal: gfx/menufx/loading/startupfx-64.png tools/png2bestpal/res/color_tbl_basic.txt $(PNGTOBSPAL)
 pkg/data/loading32.pal: gfx/menufx/loading/loading-32.png tools/png2bestpal/res/color_tbl_basic.txt $(PNGTOBSPAL)
 pkg/data/loading64.pal: gfx/menufx/loading/loading-64.png tools/png2bestpal/res/color_tbl_basic.txt $(PNGTOBSPAL)
 pkg/data/nocd.pal:      gfx/menufx/loading/nocd-32.png tools/png2bestpal/res/color_tbl_basic.txt $(PNGTOBSPAL)
 
-pkg/ldata/torture.pal pkg/data/legal32.pal pkg/data/legal64.pal pkg/data/startfx32.pal pkg/data/startfx64.pal pkg/data/loading32.pal pkg/data/loading64.pal pkg/data/nocd.pal:
+pkg/ldata/torture.pal pkg/data/legal32.pal pkg/data/legal64.pal pkg/data/legal-720p-wide.pal pkg/data/legal-1080p-wide.pal pkg/data/startfx32.pal pkg/data/startfx64.pal pkg/data/loading32.pal pkg/data/loading64.pal pkg/data/nocd.pal:
 	-$(ECHO) 'Building palette: $@'
 	@$(MKDIR) $(@D)
 	$(PNGTOBSPAL) -o "$@" -m "$(filter %.txt,$^)" $(filter %.png,$^)
@@ -267,6 +274,8 @@ pkg/data/gmapbug.dat:   gfx/enginefx/parchmentbug/filelist-gbug.txt pkg/data/pal
 
 pkg/data/legal32.raw:   gfx/menufx/loading/legal-32.png pkg/data/legal32.pal $(PNGTORAW)
 pkg/data/legal64.raw:   gfx/menufx/loading/legal-64.png pkg/data/legal64.pal $(PNGTORAW)
+pkg/data/legal-720p-wide.raw:    gfx/menufx/loading/legal-720p-wide.png pkg/data/legal-720p-wide.pal $(PNGTORAW)
+pkg/data/legal-1080p-wide.raw:   gfx/menufx/loading/legal-1080p-wide.png pkg/data/legal-1080p-wide.pal $(PNGTORAW)
 pkg/data/startfx32.raw: gfx/menufx/loading/startupfx-32.png pkg/data/startfx32.pal $(PNGTORAW)
 pkg/data/startfx64.raw: gfx/menufx/loading/startupfx-64.png pkg/data/startfx64.pal $(PNGTORAW)
 pkg/data/loading32.raw: gfx/menufx/loading/loading-32.png pkg/data/loading32.pal $(PNGTORAW)
@@ -291,6 +300,7 @@ pkg/data/swipe03.dat: gfx/enginefx/swipes-32/filelist_scythlr.txt pkg/data/palet
 pkg/data/swipe04.dat: gfx/enginefx/swipes-32/filelist_sticklr.txt pkg/data/palette.dat $(PNGTORAW)
 pkg/data/swipe05.dat: gfx/enginefx/swipes-32/filelist_stickrl.txt pkg/data/palette.dat $(PNGTORAW)
 pkg/data/swipe06.dat: gfx/enginefx/swipes-32/filelist_clawsrl.txt pkg/data/palette.dat $(PNGTORAW)
+pkg/data/swipe07.dat: gfx/enginefx/swipes-32/filelist_teeth.txt pkg/data/palette.dat $(PNGTORAW)
 
 pkg/data/frac%.raw:
 	-$(ECHO) 'Building RAW texture: $@'
@@ -304,25 +314,49 @@ pkg/data/tmap%.dat:
 	-$(ECHO) 'Finished building: $@'
 	-$(ECHO) ' '
 
-pkg/ldata/%.raw pkg/data/%.raw:
+define BUILD_RAW_IMAGE_CMD
 	-$(ECHO) 'Building RAW image: $@'
 	$(PNGTORAW) -o "$@" -p "$(word 2,$^)" -f raw -l 100 "$<"
 	-$(ECHO) 'Finished building: $@'
 	-$(ECHO) ' '
+endef
 
-pkg/ldata/%.dat pkg/data/%.dat:
+pkg/ldata/%.raw:
+	$(BUILD_RAW_IMAGE_CMD)
+
+pkg/data/%.raw:
+	$(BUILD_RAW_IMAGE_CMD)
+
+
+define BUILD_TABULATED_SPRITES_CMD
 	-$(ECHO) 'Building tabulated sprites: $@'
 	$(MKDIR) "$(@D)"
 	$(PNGTORAW) -b -o "$@" -p "$(word 2,$^)" -f sspr -l 0 "$<"
 	-$(ECHO) 'Finished building: $@'
 	-$(ECHO) ' '
+endef
 
-pkg/creatrs/%.jty pkg/data/%.jty:
+pkg/ldata/%.dat:
+	$(BUILD_TABULATED_SPRITES_CMD)
+
+pkg/data/%.dat:
+	$(BUILD_TABULATED_SPRITES_CMD)
+
+
+define BUILD_JONTY_SPRITES_CMD
 	-$(ECHO) 'Building jonty sprites: $@'
 	@$(MKDIR) "$(@D)"
 	$(PNGTORAW) -m -o "$@" -p "$(word 2,$^)" -f jspr -l 0 "$<"
 	-$(ECHO) 'Finished building: $@'
 	-$(ECHO) ' '
+endef
+
+pkg/creatrs/%.jty:
+	$(BUILD_JONTY_SPRITES_CMD)
+
+pkg/data/%.jty:
+	$(BUILD_JONTY_SPRITES_CMD)
+
 
 gfx/%:: | gfx/LICENSE ;
 

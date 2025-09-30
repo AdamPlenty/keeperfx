@@ -23,15 +23,15 @@
 #include "bflib_basics.h"
 
 #include "bflib_dernc.h"
-#include "bflib_memory.h"
-#include "bflib_bufrw.h"
 #include "bflib_fileio.h"
 
 #include "front_simple.h"
 #include "config.h"
 #include "config_campaigns.h"
 #include "config_slabsets.h"
+#include "config_strings.h"
 #include "config_terrain.h"
+#include "config_keeperfx.h"
 #include "light_data.h"
 #include "map_ceiling.h"
 #include "map_utils.h"
@@ -39,6 +39,7 @@
 #include "engine_textures.h"
 #include "game_legacy.h"
 #include "keeperfx.hpp"
+#include "player_instances.h"
 
 #include <toml.h>
 #include "post_inc.h"
@@ -54,6 +55,8 @@ extern "C" {
  * or any other function used beyond first initialization of a level.
   */
 long level_file_version = 0;
+char *level_strings[STRINGS_MAX+1];
+char *level_strings_data;
 /******************************************************************************/
 #pragma pack(1)
 
@@ -82,7 +85,7 @@ struct LegacyCoord2d {
 struct LegacyInitThing { // sizeof=0x15
     struct LegacyCoord3d mappos;
     unsigned char oclass;
-    unsigned char model;
+    unsigned char model; // Converted to ThingModel on read
     unsigned char owner;
     unsigned short range;
     unsigned short index;
@@ -110,7 +113,6 @@ struct LegacyInitLight { // sizeof=0x14
 
 #pragma pack()
 
-
 /******************************************************************************/
 
 
@@ -124,7 +126,6 @@ unsigned char *load_single_map_file_to_buffer(LevelNumber lvnum,const char *fext
 {
   short fgroup = get_level_fgroup(lvnum);
   char* fname = prepare_file_fmtpath(fgroup, "map%05lu.%s", lvnum, fext);
-  wait_for_cd_to_be_available();
   long fsize = LbFileLengthRnc(fname);
   if (fsize < *ldsize)
   {
@@ -134,15 +135,7 @@ unsigned char *load_single_map_file_to_buffer(LevelNumber lvnum,const char *fext
           SYNCMSG("Optional file \"map%05lu.%s\" doesn't exist or is too small.", lvnum, fext);
       return NULL;
   }
-  if (fsize > ANY_MAP_FILE_MAX_SIZE)
-  {
-    if ((flags & LMFF_Optional) == 0)
-      WARNMSG("Map file \"map%05lu.%s\" exceeds max size of %d; loading failed.",lvnum,fext,ANY_MAP_FILE_MAX_SIZE);
-    else
-      SYNCMSG("Optional file \"map%05lu.%s\" exceeds max size of %d; not loading.",lvnum,fext,ANY_MAP_FILE_MAX_SIZE);
-    return NULL;
-  }
-  unsigned char* buf = LbMemoryAlloc(fsize + 16);
+  unsigned char* buf = calloc(fsize + 16, 1);
   if (buf == NULL)
   {
     if ((flags & LMFF_Optional) == 0)
@@ -158,7 +151,7 @@ unsigned char *load_single_map_file_to_buffer(LevelNumber lvnum,const char *fext
       WARNMSG("Reading map file \"map%05lu.%s\" failed.",lvnum,fext);
     else
       SYNCMSG("Reading optional file \"map%05lu.%s\" failed.",lvnum,fext);
-    LbMemoryFree(buf);
+    free(buf);
     return NULL;
   }
   *ldsize = fsize;
@@ -166,7 +159,7 @@ unsigned char *load_single_map_file_to_buffer(LevelNumber lvnum,const char *fext
   return buf;
 }
 
-long get_level_number_from_file_name(char *fname)
+long get_level_number_from_file_name(const char *fname)
 {
   if (strnicmp(fname,"map",3) != 0)
     return SINGLEPLAYER_NOTSTARTED;
@@ -181,7 +174,7 @@ long get_level_number_from_file_name(char *fname)
  * Analyzes one line of .LIF file buffer. The buffer must be null-terminated.
  * @return Length of the parsed line.
  */
-long level_lif_entry_parse(char *fname, char *buf)
+long level_lif_entry_parse(const char *fname, char *buf)
 {
   if (buf[0] == '\0')
     return 0;
@@ -202,7 +195,7 @@ long level_lif_entry_parse(char *fname, char *buf)
         i++;
         if (i >= 10000) // arbritarily big number to prevent an infinte loop if last line is a comment that doesn't have a new line at the end
         {
-          WARNMSG("commented-out line from \"%s\" is too long at %d characters", fname,i);
+          WARNMSG("commented-out line from \"%s\" is too long at %ld characters", fname,i);
           return 0;
         }
       }
@@ -234,9 +227,9 @@ long level_lif_entry_parse(char *fname, char *buf)
     if (cbuf[0] == '#')
     {
       cbuf++;
-      if (!set_level_info_string_index(lvnum,cbuf,LvOp_IsFree))
+      if (!set_level_info_string_index(lvnum,cbuf,LvKind_IsFree))
       {
-        WARNMSG("Can't set string index of level %d from file \"%s\"", lvnum, fname);
+        WARNMSG("Can't set string index of level %ld from file \"%s\"", lvnum, fname);
       }
       cbuf--;
     }
@@ -253,7 +246,7 @@ long level_lif_entry_parse(char *fname, char *buf)
   }
   if (i >= LINEMSG_SIZE)
   {
-    WARNMSG("Level name from \"%s\" truncated from %d to %d characters", fname,i,LINEMSG_SIZE);
+    WARNMSG("Level name from \"%s\" truncated from %ld to %d characters", fname,i,LINEMSG_SIZE);
     i = LINEMSG_SIZE-1;
     cbuf[i] = '\0';
   }
@@ -268,7 +261,7 @@ long level_lif_entry_parse(char *fname, char *buf)
     WARNMSG("Can't add freeplay level from \"%s\" to campaign \"%s\"", fname, campaign.name);
     return 0;
   }
-  if (!set_level_info_text_name(lvnum,cbuf,LvOp_IsFree))
+  if (!set_level_info_text_name(lvnum,cbuf,LvKind_IsFree))
   {
     WARNMSG("Can't set name of level from file \"%s\"", fname);
     return 0;
@@ -283,7 +276,7 @@ long level_lif_entry_parse(char *fname, char *buf)
  * @param buflen Length of the buffer.
  * @return
  */
-short level_lif_file_parse(char *fname, char *buf, long buflen)
+short level_lif_file_parse(const char *fname, char *buf, long buflen)
 {
   if (buf == NULL)
     return false;
@@ -309,7 +302,7 @@ short level_lif_file_parse(char *fname, char *buf, long buflen)
  */
 TbBool find_and_load_lif_files(void)
 {
-    unsigned char* buf = LbMemoryAlloc(MAX_LIF_SIZE);
+    unsigned char* buf = calloc(MAX_LIF_SIZE, 1);
     if (buf == NULL)
     {
         ERRORLOG("Can't allocate memory for .LIF files parsing.");
@@ -317,37 +310,33 @@ TbBool find_and_load_lif_files(void)
   }
   short result = false;
   char* fname = prepare_file_path(FGrp_CmpgLvls, "*.lif");
-  struct TbFileFind fileinfo;
-  int rc = LbFileFindFirst(fname, &fileinfo, 0x21u);
-  while (rc != -1)
-  {
-    fname = prepare_file_path(FGrp_CmpgLvls,fileinfo.Filename);
-    long i = LbFileLength(fname);
-    if ((i < 0) || (i >= MAX_LIF_SIZE))
-    {
-      WARNMSG("File \"%s\" too long (Max size %d)", fileinfo.Filename, MAX_LIF_SIZE);
-
-    } else
-    if (LbFileLoadAt(fname, buf) != i)
-    {
-      WARNMSG("Unable to read .LIF file, \"%s\"", fileinfo.Filename);
-    } else
-    {
-      buf[i] = '\0';
-      if (level_lif_file_parse(fileinfo.Filename, (char *)buf, i))
-        result = true;
-    }
-    rc = LbFileFindNext(&fileinfo);
+  struct TbFileEntry fe;
+  struct TbFileFind * ff = LbFileFindFirst(fname, &fe);
+  if (ff) {
+    do {
+      fname = prepare_file_path(FGrp_CmpgLvls, fe.Filename);
+      long i = LbFileLength(fname);
+      if ((i < 0) || (i >= MAX_LIF_SIZE)) {
+        WARNMSG("File \"%s\" too long (Max size %d)", fe.Filename, MAX_LIF_SIZE);
+      } else if (LbFileLoadAt(fname, buf) != i) {
+        WARNMSG("Unable to read .LIF file, \"%s\"", fe.Filename);
+      } else {
+        buf[i] = '\0';
+        if (level_lif_file_parse(fe.Filename, (char *)buf, i)) {
+          result = true;
+        }
+      }
+    } while (LbFileFindNext(ff, &fe) >= 0);
+    LbFileFindEnd(ff);
   }
-  LbFileFindEnd(&fileinfo);
-  LbMemoryFree(buf);
+  free(buf);
   return result;
 }
 
 /**
  * Analyzes given LOF file buffer. The buffer must be null-terminated.
  */
-TbBool level_lof_file_parse(char *fname, char *buf, long len)
+TbBool level_lof_file_parse(const char *fname, char *buf, long len)
 {
     struct LevelInformation *lvinfo;
     long pos;
@@ -356,6 +345,7 @@ TbBool level_lof_file_parse(char *fname, char *buf, long len)
     int cmd_num;
     int k;
     int n;
+    word_buf[0] = 0;
     SYNCDBG(8,"Starting for \"%s\"",fname);
     if (buf == NULL)
         return false;
@@ -365,7 +355,7 @@ TbBool level_lof_file_parse(char *fname, char *buf, long len)
         WARNLOG("Incorrect .LOF file name \"%s\", skipped.",fname);
         return false;
     }
-    lvinfo = get_or_create_level_info(lvnum, LvOp_None);
+    lvinfo = get_or_create_level_info(lvnum, LvKind_None);
     if (lvinfo == NULL)
     {
         WARNMSG("Can't get LevelInformation item to store level %ld data from LOF file.",lvnum);
@@ -379,7 +369,7 @@ TbBool level_lof_file_parse(char *fname, char *buf, long len)
         // Finding command number in this line
         cmd_num = recognize_conf_command(buf,&pos,len,cmpgn_map_commands);
         // Now store the config item in correct place
-        if (cmd_num == -3) break; // if next block starts
+        if (cmd_num == ccr_endOfBlock) break; // if next block starts
         n = 0;
         switch (cmd_num)
         {
@@ -473,16 +463,19 @@ TbBool level_lof_file_parse(char *fname, char *buf, long len)
                   COMMAND_TEXT(cmd_num),fname);
             }
             break;
-        case 6: // OPTIONS
-            while ((k = recognize_conf_parameter(buf,&pos,len,cmpgn_map_cmnds_options)) > 0)
+        case 6: // ENSIGN
+            if (get_conf_parameter_single(buf, &pos, len, word_buf, sizeof(word_buf)) > 0)
             {
-              switch (k)
-              {
-              case LvOp_Tutorial:
-                lvinfo->options |= k;
-                break;
-              }
-              n++;
+                k = get_id(cmpgn_map_ensign_flag_options, word_buf);
+                if (k >= 0)
+                {
+                    lvinfo->ensign = k;
+                }
+                else
+                {
+                    WARNMSG("Invalid value '%s' for \"%s\" in '%s' file.", word_buf,
+                        COMMAND_TEXT(cmd_num), fname);
+                }
             }
             break;
         case 7: // SPEECH
@@ -520,48 +513,48 @@ TbBool level_lof_file_parse(char *fname, char *buf, long len)
             {
               switch (k)
               {
-              case LvOp_IsSingle:
-                if ((lvinfo->options & LvOp_IsSingle) == 0)
+              case LvKind_IsSingle:
+                if ((lvinfo->level_type & LvKind_IsSingle) == 0)
                 {
                     if (add_single_level_to_campaign(&campaign,lvinfo->lvnum) >= 0)
                         n++;
-                    lvinfo->options |= LvOp_IsSingle;
+                    lvinfo->level_type |= LvKind_IsSingle;
                 } else
                     n++;
                 break;
-              case LvOp_IsMulti:
-                if ((lvinfo->options & LvOp_IsMulti) == 0)
+              case LvKind_IsMulti:
+                if ((lvinfo->level_type & LvKind_IsMulti) == 0)
                 {
                     if (add_multi_level_to_campaign(&campaign,lvinfo->lvnum) >= 0)
                         n++;
-                    lvinfo->options |= LvOp_IsMulti;
+                    lvinfo->level_type |= LvKind_IsMulti;
                 } else
                     n++;
                 break;
-              case LvOp_IsBonus:
-                if ((lvinfo->options & LvOp_IsBonus) == 0)
+              case LvKind_IsBonus:
+                if ((lvinfo->level_type & LvKind_IsBonus) == 0)
                 {
                     if (add_bonus_level_to_campaign(&campaign,lvinfo->lvnum) >= 0)
                         n++;
-                    lvinfo->options |= LvOp_IsBonus;
+                    lvinfo->level_type |= LvKind_IsBonus;
                 } else
                     n++;
                 break;
-              case LvOp_IsExtra:
-                if ((lvinfo->options & LvOp_IsExtra) == 0)
+              case LvKind_IsExtra:
+                if ((lvinfo->level_type & LvKind_IsExtra) == 0)
                 {
                     if (add_extra_level_to_campaign(&campaign,lvinfo->lvnum) >= 0)
                         n++;
-                    lvinfo->options |= LvOp_IsExtra;
+                    lvinfo->level_type |= LvKind_IsExtra;
                 } else
                     n++;
                 break;
-              case LvOp_IsFree:
-                if ((lvinfo->options & LvOp_IsFree) == 0)
+              case LvKind_IsFree:
+                if ((lvinfo->level_type & LvKind_IsFree) == 0)
                 {
                     if (add_freeplay_level_to_campaign(&campaign,lvinfo->lvnum) >= 0)
                         n++;
-                    lvinfo->options |= LvOp_IsFree;
+                    lvinfo->level_type |= LvKind_IsFree;
                 } else
                     n++;
                 break;
@@ -604,12 +597,12 @@ TbBool level_lof_file_parse(char *fname, char *buf, long len)
                   COMMAND_TEXT(cmd_num),fname);
             }
             break;
-        case 0: // comment
+        case ccr_comment:
             break;
-        case -1: // end of buffer
+        case ccr_endOfFile:
             break;
         default:
-            WARNMSG("Unrecognized command (%d) in LOF file '%s', starting on byte %d.",cmd_num,fname,pos);
+            WARNMSG("Unrecognized command (%d) in LOF file '%s', starting on byte %ld.",cmd_num,fname,pos);
             break;
         }
         skip_conf_to_next_line(buf,&pos,len);
@@ -625,7 +618,7 @@ TbBool level_lof_file_parse(char *fname, char *buf, long len)
 TbBool find_and_load_lof_files(void)
 {
     SYNCDBG(16,"Starting");
-    unsigned char* buf = LbMemoryAlloc(MAX_LIF_SIZE);
+    unsigned char* buf = calloc(MAX_LIF_SIZE, 1);
     if (buf == NULL)
     {
       ERRORLOG("Can't allocate memory for .LOF files parsing.");
@@ -633,30 +626,26 @@ TbBool find_and_load_lof_files(void)
     }
     short result = false;
     char* fname = prepare_file_path(FGrp_CmpgLvls, "*.lof");
-    struct TbFileFind fileinfo;
-    int rc = LbFileFindFirst(fname, &fileinfo, 0x21u);
-    while (rc != -1)
-    {
-        fname = prepare_file_path(FGrp_CmpgLvls,fileinfo.Filename);
-        long i = LbFileLength(fname);
-        if ((i < 0) || (i >= MAX_LIF_SIZE))
-        {
-          WARNMSG("File '%s' too long (Max size %d)", fileinfo.Filename, MAX_LIF_SIZE);
+    struct TbFileEntry fe;
+    struct TbFileFind * ff = LbFileFindFirst(fname, &fe);
+    if (ff) {
+        do {
+            fname = prepare_file_path(FGrp_CmpgLvls, fe.Filename);
+            long i = LbFileLength(fname);
+            if ((i < 0) || (i >= MAX_LIF_SIZE)) {
+              WARNMSG("File '%s' too long (Max size %d)", fe.Filename, MAX_LIF_SIZE);
 
-        } else
-        if (LbFileLoadAt(fname, buf) != i)
-        {
-          WARNMSG("Unable to read .LOF file, '%s'", fileinfo.Filename);
-        } else
-        {
-          buf[i] = '\0';
-          if (level_lof_file_parse(fileinfo.Filename, (char *)buf, i))
-            result = true;
-        }
-        rc = LbFileFindNext(&fileinfo);
+            } else if (LbFileLoadAt(fname, buf) != i) {
+              WARNMSG("Unable to read .LOF file, '%s'", fe.Filename);
+            } else {
+              buf[i] = '\0';
+              if (level_lof_file_parse(fe.Filename, (char *)buf, i))
+                result = true;
+            }
+        } while (LbFileFindNext(ff, &fe) >= 0);
+        LbFileFindEnd(ff);
     }
-    LbFileFindEnd(&fileinfo);
-    LbMemoryFree(buf);
+    free(buf);
     return result;
 }
 
@@ -681,24 +670,19 @@ TbBool load_column_file(LevelNumber lv_num)
       WARNMSG("Only %d columns supported, CLM file has %ld.",COLUMNS_COUNT,total);
       total = COLUMNS_COUNT;
     }
-    // Read and validate second amount
-    game.columns_used = llong(&buf[i]);
-    if (game.columns_used >= COLUMNS_COUNT)
-    {
-      game.columns_used = COLUMNS_COUNT - 1;
-    }
+    // The second lot of 4 bytes here are ignored.
     i += 4;
     // Fill the columns
     for (long k = 0; k < total; k++)
     {
         struct Column* colmn = &game.columns_data[k];
-        LbMemoryCopy(colmn, &buf[i], sizeof(struct Column));
+        memcpy(colmn, &buf[i], sizeof(struct Column));
         //Update top cube in the column
         unsigned short n = find_column_height(colmn);
         set_column_floor_filled_subtiles(colmn, n);
         i += sizeof(struct Column);
     }
-    LbMemoryFree(buf);
+    free(buf);
     return true;
 }
 
@@ -708,32 +692,31 @@ TbBool load_map_data_file(LevelNumber lv_num)
     unsigned long x;
     unsigned long y;
     clear_map();
-    long fsize = 2 * (gameadd.map_subtiles_y + 1) * (gameadd.map_subtiles_x + 1);
+    long fsize = 2 * (game.map_subtiles_y + 1) * (game.map_subtiles_x + 1);
     unsigned char* buf = load_single_map_file_to_buffer(lv_num, "dat", &fsize, LMFF_None);
     if (buf == NULL)
         return false;
     unsigned long i = 0;
-    for (y=0; y < (gameadd.map_subtiles_y+1); y++)
+    for (y=0; y < (game.map_subtiles_y+1); y++)
     {
-        for (x=0; x < (gameadd.map_subtiles_x+1); x++)
+        for (x=0; x < (game.map_subtiles_x+1); x++)
         {
             mapblk = get_map_block_at(x,y);
-            unsigned long n = -lword(&buf[i]);
-            mapblk->data ^= (mapblk->data ^ n) & 0x7FF;
+            mapblk->col_idx = -lword(&buf[i]);
             i += 2;
         }
     }
-    LbMemoryFree(buf);
+    free(buf);
     // Clear some bits and do some other setup
-    for (y=0; y < (gameadd.map_subtiles_y+1); y++)
+    for (y=0; y < (game.map_subtiles_y+1); y++)
     {
-        for (x=0; x < (gameadd.map_subtiles_x+1); x++)
+        for (x=0; x < (game.map_subtiles_x+1); x++)
         {
             mapblk = get_map_block_at(x,y);
             unsigned short* wptr = &game.lish.subtile_lightness[get_subtile_number(x, y)];
             *wptr = 32;
             mapblk->mapwho = 0;
-            mapblk->data &= ~0x0F000000; //filled subtiles
+            mapblk->filled_subtiles = 0;
             mapblk->revealed = 0;
         }
     }
@@ -766,7 +749,7 @@ static TbBool load_thing_file(LevelNumber lv_num)
     {
         struct LegacyInitThing litng;
         struct InitThing itng;
-        LbMemoryCopy(&litng, &buf[i], sizeof(struct LegacyInitThing));
+        memcpy(&litng, &buf[i], sizeof(struct LegacyInitThing));
         itng.mappos.x.val = litng.mappos.x.val;
         itng.mappos.y.val = litng.mappos.y.val;
         itng.mappos.z.val = litng.mappos.z.val;
@@ -775,12 +758,12 @@ static TbBool load_thing_file(LevelNumber lv_num)
         itng.owner  = litng.owner;
         itng.range  = litng.range;
         itng.index  = litng.index;
-        LbMemoryCopy(&itng.params, &litng.params, 8);
+        memcpy(&itng.params, &litng.params, 8);
 
         thing_create_thing(&itng);
         i += sizeof(struct LegacyInitThing);
     }
-    LbMemoryFree(buf);
+    free(buf);
     return true;
 }
 
@@ -794,21 +777,21 @@ static TbBool load_kfx_toml_file(LevelNumber lv_num, const char *ext, const char
     if (buf == NULL)
         return false;
     VALUE file_root, *root_ptr = &file_root;
-    char err[255];
-    char key[64];
+    char err[255] = "";
+    char key[64] = "";
 
     if (toml_parse((char*)buf, err, sizeof(err), root_ptr))
     {
         WARNMSG("Unable to load %s file\n %s", msg_name, err);
-        LbMemoryFree(buf);
+        free(buf);
         return false;
     }
     VALUE *common_section = value_dict_get(root_ptr, "common");
     if (!common_section)
     {
-        WARNMSG("No [common] in %s for level %d", msg_name, lv_num);
+        WARNMSG("No [common] in %s for level %ld", msg_name, lv_num);
         value_fini(root_ptr);
-        LbMemoryFree(buf);
+        free(buf);
         return false;
     }
     int32_t total;
@@ -828,7 +811,7 @@ static TbBool load_kfx_toml_file(LevelNumber lv_num, const char *ext, const char
     {
         WARNMSG("Bad amount of secions in %s file", msg_name);
         value_fini(root_ptr);
-        LbMemoryFree(buf);
+        free(buf);
         return false;
     }
     if (total >= max_count)
@@ -847,7 +830,7 @@ static TbBool load_kfx_toml_file(LevelNumber lv_num, const char *ext, const char
         }
         else
         {
-            sprintf(key, section_fmt, k);
+            snprintf(key, sizeof(key), section_fmt, k);
             section = value_dict_get(root_ptr, key);
         }
         if (value_type(section) != VALUE_DICT)
@@ -863,7 +846,7 @@ static TbBool load_kfx_toml_file(LevelNumber lv_num, const char *ext, const char
         }
     }
     value_fini(root_ptr);
-    LbMemoryFree(buf);
+    free(buf);
     return true;
 }
 
@@ -900,16 +883,16 @@ TbBool load_action_point_file(LevelNumber lv_num)
   {
       struct LegacyInitActionPoint legiapt;
       struct InitActionPoint iapt;
-      LbMemoryCopy(&legiapt, &buf[i], sizeof(struct LegacyInitActionPoint));
+      memcpy(&legiapt, &buf[i], sizeof(struct LegacyInitActionPoint));
       iapt.mappos.x.val = legiapt.mappos.x.val;
       iapt.mappos.y.val = legiapt.mappos.y.val;
       iapt.num          = legiapt.num;
       iapt.range        = legiapt.range;
       if (actnpoint_create_actnpoint(&iapt) == INVALID_ACTION_POINT)
-          ERRORLOG("Cannot allocate action point %d during APT load", k);
+          ERRORLOG("Cannot allocate action point %ld during APT load", k);
     i += sizeof(struct LegacyInitActionPoint);
   }
-  LbMemoryFree(buf);
+  free(buf);
   return true;
 }
 
@@ -942,37 +925,6 @@ TbBool update_columns_use(struct Column *cols,long ccount,struct SlabSet *sset,l
     return true;
 }
 
-TbBool load_slabclm_file(struct Column *cols, long *ccount)
-{
-  SYNCDBG(18,"Starting");
-  long fsize = 4;
-  unsigned char* buf = load_data_file_to_buffer(&fsize, FGrp_StdData, "slabs.clm");
-  if (buf == NULL)
-    return false;
-  long i = 0;
-  long total = llong(&buf[i]);
-  i += 4;
-  // Validate total amount of columns
-  if ((total < 0) || (total > (fsize-4)/sizeof(struct Column)))
-  {
-    total = (fsize-4)/sizeof(struct Column);
-    WARNMSG("Bad amount of columns in Column Set file; corrected to %ld.",total);
-  }
-  if (total > *ccount)
-  {
-    WARNMSG("Only %d columns supported, Column Set file has %ld.",*ccount,total);
-    total = *ccount;
-  }
-  for (long k = 0; k < total; k++)
-  {
-    LbMemoryCopy(&cols[k],&buf[i],sizeof(struct Column));
-    i += sizeof(struct Column);
-  }
-  *ccount = total;
-  LbMemoryFree(buf);
-  return true;
-}
-
 TbBool columns_add_static_entries(void)
 {
     short c[3];
@@ -980,11 +932,11 @@ TbBool columns_add_static_entries(void)
     for (long i=0; i < 3; i++)
       c[i] = 0;
     struct Column lcolmn;
-    LbMemorySet(&lcolmn, 0, sizeof(struct Column));
+    memset(&lcolmn, 0, sizeof(struct Column));
     short* wptr = &game.col_static_entries[0];
     for (long i=0; i < 3; i++)
     {
-        LbMemorySet(&lcolmn, 0, sizeof(struct Column));
+        memset(&lcolmn, 0, sizeof(struct Column));
         lcolmn.floor_texture = c[i];
         for (long k = 0; k < 6; k++)
         {
@@ -1005,7 +957,7 @@ TbBool columns_add_static_entries(void)
 TbBool update_slabset_column_indices(struct Column *cols, long ccount)
 {
     struct Column lcolmn;
-    LbMemorySet(&lcolmn,0,sizeof(struct Column));
+    memset(&lcolmn,0,sizeof(struct Column));
     for (long i = 0; i < game.slabset_num; i++)
     {
         struct SlabSet* sset = &game.slabset[i];
@@ -1031,7 +983,7 @@ TbBool update_slabset_column_indices(struct Column *cols, long ccount)
                     ncol = 0;
                 if (ncol == 0)
                 {
-                    ERRORLOG("column:%d referenced in slabset.toml but not present in columnset.toml",-n);
+                    ERRORLOG("column:%ld referenced in slabset.toml but not present in columnset.toml",-n);
                     continue;
                 }
             }
@@ -1060,25 +1012,13 @@ TbBool create_columns_from_list(struct Column *cols, long ccount)
 TbBool load_slab_datclm_files(void)
 {
     SYNCDBG(5,"Starting");
-    // Load Column Set
-    long cols_tot = 0;
-    struct Column* cols = (struct Column*)LbMemoryAlloc(COLUMNS_COUNT * sizeof(struct Column));
-    if (cols == NULL)
-    {
-      WARNMSG("Can't allocate memory for %d column sets.",COLUMNS_COUNT);
-      return false;
-    }
-    if (!load_columns_config(keeper_columns_file,CnfLd_Standard,cols,&cols_tot))
-    {
-      LbMemoryFree(cols);
-      return false;
-    }
+
     long slbset_tot = game.conf.slab_conf.slab_types_count * SLABSETS_PER_SLAB;
     game.slabset_num = slbset_tot;
-    update_columns_use(cols,cols_tot,game.slabset,slbset_tot);
-    create_columns_from_list(cols,cols_tot);
-    update_slabset_column_indices(cols,cols_tot);
-    LbMemoryFree(cols);
+
+    update_columns_use(game.conf.column_conf.cols,game.conf.column_conf.columns_count,game.slabset,slbset_tot);
+    create_columns_from_list(game.conf.column_conf.cols,game.conf.column_conf.columns_count);
+    update_slabset_column_indices(game.conf.column_conf.cols,game.conf.column_conf.columns_count);
     return true;
 }
 
@@ -1101,20 +1041,20 @@ long load_map_wibble_file(unsigned long lv_num)
     unsigned long i;
     unsigned long k;
     long fsize;
-    fsize = (gameadd.map_subtiles_y+1)*(gameadd.map_subtiles_x+1);
+    fsize = (game.map_subtiles_y+1)*(game.map_subtiles_x+1);
     buf = load_single_map_file_to_buffer(lv_num,"wib",&fsize,LMFF_None);
     if (buf == NULL)
       return false;
     i = 0;
-    for (stl_y=0; stl_y < (gameadd.map_subtiles_y+1); stl_y++)
-      for (stl_x=0; stl_x < (gameadd.map_subtiles_x+1); stl_x++)
+    for (stl_y=0; stl_y < (game.map_subtiles_y+1); stl_y++)
+      for (stl_x=0; stl_x < (game.map_subtiles_x+1); stl_x++)
       {
         mapblk = get_map_block_at(stl_x,stl_y);
         k = buf[i];
         set_mapblk_wibble_value(mapblk, k);
         i++;
       }
-    LbMemoryFree(buf);
+    free(buf);
     return true;
 }
 
@@ -1125,53 +1065,56 @@ short load_map_ownership_file(LevelNumber lv_num)
     unsigned char *buf;
     unsigned long i;
     long fsize;
-    fsize = (gameadd.map_subtiles_y+1)*(gameadd.map_subtiles_x+1);
+    fsize = (game.map_subtiles_y+1)*(game.map_subtiles_x+1);
     buf = load_single_map_file_to_buffer(lv_num,"own",&fsize,LMFF_None);
     if (buf == NULL)
       return false;
     i = 0;
-    for (y=0; y < (gameadd.map_subtiles_y+1); y++)
-      for (x=0; x < (gameadd.map_subtiles_x+1); x++)
+    for (y=0; y < (game.map_subtiles_y+1); y++)
+      for (x=0; x < (game.map_subtiles_x+1); x++)
       {
-        if ((x < gameadd.map_subtiles_x) && (y < gameadd.map_subtiles_y))
+        if ((x < game.map_subtiles_x) && (y < game.map_subtiles_y))
         {
             set_slab_owner(subtile_slab(x),subtile_slab(y),buf[i]);
         }
         else
-            set_slab_owner(subtile_slab(x),subtile_slab(y),NEUTRAL_PLAYER);
+            set_slab_owner(subtile_slab(x),subtile_slab(y),PLAYER_NEUTRAL);
         i++;
       }
-    LbMemoryFree(buf);
+    free(buf);
     return true;
 }
 
 TbBool initialise_map_wlb_auto(void)
 {
     struct SlabMap *slb;
-    struct SlabAttr *slbattr;
+    struct SlabConfigStats *slabst;
     unsigned long x;
     unsigned long y;
     unsigned long n;
     unsigned long nbridge;
     nbridge = 0;
-    for (y=0; y < gameadd.map_tiles_y; y++)
-      for (x=0; x < gameadd.map_tiles_x; x++)
-      {
-        slb = get_slabmap_block(x,y);
-        if (slb->kind == SlbT_BRIDGE)
+    for (y = 0; y < game.map_tiles_y; y++)
+    {
+        for (x = 0; x < game.map_tiles_x; x++)
         {
-          if (slabs_count_near(x,y,1,SlbT_LAVA) > slabs_count_near(x,y,1,SlbT_WATER))
-            n = SlbT_LAVA;
-          else
-            n = SlbT_WATER;
-          nbridge++;
-        } else
-        {
-          n = slb->kind;
+            slb = get_slabmap_block(x, y);
+            if (slb->kind == SlbT_BRIDGE)
+            {
+                if (slabs_count_near(x, y, 1, SlbT_LAVA) > slabs_count_near(x, y, 1, SlbT_WATER))
+                    n = SlbT_LAVA;
+                else
+                    n = SlbT_WATER;
+                nbridge++;
+            }
+            else
+            {
+                n = slb->kind;
+            }
+            slabst = get_slab_kind_stats(n);
+            slb->wlb_type = slabst->wlb_type;
         }
-        slbattr = get_slab_kind_attrs(n);
-        slb->wlb_type = slbattr->wlb_type;
-      }
+    }
     SYNCMSG("Regenerated WLB flags, unsure for %d bridge blocks.",(int)nbridge);
     return true;
 }
@@ -1188,13 +1131,13 @@ TbBool load_map_wlb_file(unsigned long lv_num)
     long fsize;
     SYNCDBG(7,"Starting");
     nfixes = 0;
-    fsize = gameadd.map_tiles_y*gameadd.map_tiles_x;
+    fsize = game.map_tiles_y*game.map_tiles_x;
     buf = load_single_map_file_to_buffer(lv_num,"wlb",&fsize,LMFF_Optional);
     if (buf == NULL)
       return false;
     i = 0;
-    for (y=0; y < gameadd.map_tiles_y; y++)
-      for (x=0; x < gameadd.map_tiles_x; x++)
+    for (y=0; y < game.map_tiles_y; y++)
+      for (x=0; x < game.map_tiles_x; x++)
       {
         slb = get_slabmap_block(x,y);
         n = buf[i];
@@ -1208,7 +1151,7 @@ TbBool load_map_wlb_file(unsigned long lv_num)
             }
         i++;
       }
-    LbMemoryFree(buf);
+    free(buf);
     if (nfixes > 0)
     {
       ERRORLOG("WLB file is muddled - Fixed values for %lu tiles",nfixes);
@@ -1235,25 +1178,27 @@ short load_map_slab_file(unsigned long lv_num)
     unsigned long i;
     unsigned long n;
     long fsize;
-    fsize = 2*gameadd.map_tiles_y*gameadd.map_tiles_x;
+    fsize = 2*game.map_tiles_y*game.map_tiles_x;
     buf = load_single_map_file_to_buffer(lv_num,"slb",&fsize,LMFF_None);
     if (buf == NULL)
       return false;
     i = 0;
-    for (y=0; y < gameadd.map_tiles_y; y++)
-      for (x=0; x < gameadd.map_tiles_x; x++)
-      {
-        slb = get_slabmap_block(x,y);
-        n = lword(&buf[i]);
-        if (n > game.conf.slab_conf.slab_types_count)
+    for (y = 0; y < game.map_tiles_y; y++)
+    {
+        for (x = 0; x < game.map_tiles_x; x++)
         {
-          WARNMSG("Slab Type %d exceeds limit of %d",(int)n,game.conf.slab_conf.slab_types_count);
-          n = SlbT_ROCK;
+            slb = get_slabmap_block(x, y);
+            n = lword(&buf[i]);
+            if (n > game.conf.slab_conf.slab_types_count)
+            {
+                WARNMSG("Found invalid Slab Type %d at Tile %ld,%ld, exceeds limit of %ld", (int)n, x, y, game.conf.slab_conf.slab_types_count);
+                n = SlbT_ROCK;
+            }
+            slb->kind = n;
+            i += 2;
         }
-        slb->kind = n;
-        i += 2;
-      }
-    LbMemoryFree(buf);
+    }
+    free(buf);
     initialise_map_collides();
     initialise_map_health();
     initialise_extra_slab_info(lv_num);
@@ -1263,21 +1208,21 @@ short load_map_slab_file(unsigned long lv_num)
 short load_map_flag_file(unsigned long lv_num)
 {
     SYNCDBG(5,"Starting");
-    long fsize = 2 * (gameadd.map_subtiles_y + 1) * (gameadd.map_subtiles_x + 1);
+    long fsize = 2 * (game.map_subtiles_y + 1) * (game.map_subtiles_x + 1);
     unsigned char* buf = load_single_map_file_to_buffer(lv_num, "flg", &fsize, LMFF_Optional);
     if (buf == NULL)
         return false;
     unsigned long i = 0;
-    for (unsigned long stl_y = 0; stl_y < (gameadd.map_subtiles_y + 1); stl_y++)
+    for (unsigned long stl_y = 0; stl_y < (game.map_subtiles_y + 1); stl_y++)
     {
-        for (unsigned long stl_x = 0; stl_x < (gameadd.map_subtiles_x + 1); stl_x++)
+        for (unsigned long stl_x = 0; stl_x < (game.map_subtiles_x + 1); stl_x++)
         {
             struct Map* mapblk = get_map_block_at(stl_x, stl_y);
             mapblk->flags = buf[i];
             i += 2;
         }
     }
-    LbMemoryFree(buf);
+    free(buf);
     return true;
 }
 
@@ -1304,14 +1249,14 @@ static TbBool load_static_light_file(unsigned long lv_num)
     } else
     if (total >= LIGHTS_COUNT/2)
     {
-        WARNMSG("More than %d%% of light slots used by static lights.",100*total/LIGHTS_COUNT);
+        WARNMSG("More than %ld%% of light slots used by static lights.",100*total/LIGHTS_COUNT);
     }
     // Create the lights
     for (long k = 0; k < total; k++)
     {
         struct LegacyInitLight legilght;
         struct InitLight ilght;
-        LbMemoryCopy(&legilght, &buf[i], sizeof(struct LegacyInitLight));
+        memcpy(&legilght, &buf[i], sizeof(struct LegacyInitLight));
         ilght.attached_slb = legilght.attached_slb;
         ilght.flags      = legilght.flags;
         ilght.intensity    = legilght.intensity;
@@ -1327,7 +1272,7 @@ static TbBool load_static_light_file(unsigned long lv_num)
         }
         i += sizeof(struct LegacyInitLight);
     }
-    LbMemoryFree(buf);
+    free(buf);
     return true;
 }
 
@@ -1353,7 +1298,7 @@ short load_and_setup_map_info(unsigned long lv_num)
         return false;
     }
     game.texture_id = buf[0];
-    LbMemoryFree(buf);
+    free(buf);
     return true;
 }
 
@@ -1363,31 +1308,84 @@ static void load_ext_slabs(LevelNumber lvnum)
     char* fname = prepare_file_fmtpath(fgroup, "map%05lu.slx", (unsigned long)lvnum);
     if (LbFileExists(fname))
     {
-        if (gameadd.map_tiles_x * gameadd.map_tiles_y != LbFileLoadAt(fname, gameadd.slab_ext_data))
+        if (game.map_tiles_x * game.map_tiles_y != LbFileLoadAt(fname, game.slab_ext_data))
         {
             JUSTLOG("Invalid ExtSlab data from %s", fname);
-            memset(gameadd.slab_ext_data, 0, sizeof(gameadd.slab_ext_data));
+            memset(game.slab_ext_data, 0, sizeof(game.slab_ext_data));
         }
         SYNCDBG(1, "ExtSlab file:%s ok", fname);
     }
     else
     {
         SYNCDBG(1, "No ExtSlab file:%s", fname);
-        memset(gameadd.slab_ext_data, 0, sizeof(gameadd.slab_ext_data));
+        memset(game.slab_ext_data, 0, sizeof(game.slab_ext_data));
     }
-    memcpy(&gameadd.slab_ext_data_initial,&gameadd.slab_ext_data, sizeof(gameadd.slab_ext_data));
+    memcpy(&game.slab_ext_data_initial,&game.slab_ext_data, sizeof(game.slab_ext_data));
+}
+
+void load_map_string_data(struct GameCampaign *campgn, LevelNumber lvnum, short fgroup)
+{
+    char* fname = prepare_file_fmtpath(fgroup, "map%05lu.%s.dat", (unsigned long)lvnum, get_language_lwrstr(install_info.lang_id));
+    if (!LbFileExists(fname))
+    {
+        SYNCMSG("Map string file %s doesn't exist.", fname);
+        char buf[2048];
+        buf[0] = 0;
+        memcpy(&buf, fname, 2048);
+        fname = prepare_file_fmtpath(fgroup, "map%05lu.%s.dat", (unsigned long)lvnum, get_language_lwrstr(campgn->default_language));
+        if (strcasecmp(fname, buf) == 0)
+        {
+            return;
+        }
+        if (!LbFileExists(fname))
+        {
+            SYNCMSG("Map string file %s doesn't exist.", fname);
+            return;
+        }
+    }
+    long filelen = LbFileLengthRnc(fname);
+    if (filelen <= 0)
+    {
+        ERRORLOG("Map Strings file %s does not exist or can't be opened", fname);
+        return;
+    }
+    size_t size = filelen + 256;
+    level_strings_data = calloc(size, sizeof(char)); // we're allocating extra memory, which we can't just assume is already clear; this could cause weird issues
+    if (level_strings_data == NULL)
+    {
+        ERRORLOG("Can't allocate memory for Map Strings data");
+        return;
+    }
+    long loaded_size = LbFileLoadAt(fname, level_strings_data);
+    if (loaded_size < 16)
+    {
+        ERRORLOG("Map Strings file couldn't be loaded or is too small");
+        return;
+    }
+    unsigned long loaded_strings_count = count_strings(level_strings_data, loaded_size);
+    char* strings_data_end = level_strings_data + size;
+    // Resetting all values to empty strings
+    reset_strings(level_strings, STRINGS_MAX);
+    // Analyzing strings data and filling correct values
+    TbBool result = create_strings_list(level_strings, level_strings_data, strings_data_end, STRINGS_MAX);
+    if (result)
+    {
+        SYNCMSG("Loaded %lu strings from %s", loaded_strings_count, fname);
+    }
+    SYNCDBG(19, "Finished");
 }
 
 static TbBool load_level_file(LevelNumber lvnum)
 {
-    short result;
+    TbBool result;
     TbBool new_format = true;
     short fgroup = get_level_fgroup(lvnum);
     char* fname = prepare_file_fmtpath(fgroup, "map%05lu.slb", (unsigned long)lvnum);
-    wait_for_cd_to_be_available();
     if (LbFileExists(fname))
     {
         result = true;
+        struct GameCampaign *campgn = &campaign;
+        load_map_string_data(campgn, lvnum, fgroup);
         load_map_data_file(lvnum);
         load_map_flag_file(lvnum);
         load_column_file(lvnum);
@@ -1404,7 +1402,7 @@ static TbBool load_level_file(LevelNumber lvnum)
           result = false;
         load_map_wibble_file(lvnum);
         load_and_setup_map_info(lvnum);
-        load_texture_map_file(game.texture_id);
+        load_texture_map_file(game.texture_id, lvnum, fgroup);
         if (new_format)
         {
             load_aptfx_file(lvnum);
@@ -1424,7 +1422,8 @@ static TbBool load_level_file(LevelNumber lvnum)
             result = load_thing_file(lvnum);
         }
         reinitialise_map_rooms();
-        ceiling_init(0, 1);
+        ceiling_init();
+        init_keys();
         if (result)
         {
             load_ext_slabs(lvnum);
@@ -1436,7 +1435,7 @@ static TbBool load_level_file(LevelNumber lvnum)
         load_slab_file();
         init_columns();
         game.texture_id = 0;
-        load_texture_map_file(game.texture_id);
+        load_texture_map_file(game.texture_id, lvnum, fgroup);
         init_top_texture_to_cube_table();
         result = false;
     }
@@ -1451,6 +1450,15 @@ TbBool load_map_file(LevelNumber lvnum)
     else
         set_loaded_level_number(SINGLEPLAYER_NOTSTARTED);
     return result;
+}
+
+void free_level_strings_data()
+{
+  // Resetting all values to empty strings
+  reset_strings(level_strings, STRINGS_MAX);
+  // Freeing memory
+  free(level_strings_data);
+  level_strings_data = NULL;
 }
 /******************************************************************************/
 #ifdef __cplusplus

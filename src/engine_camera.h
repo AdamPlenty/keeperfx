@@ -41,6 +41,9 @@ struct PlayerInfo;
 #define FRONTVIEW_CAMERA_ZOOM_MIN 3000 // Originally 16384, adjusted for view distance
 #define MINMAX_LENGTH 512 // Originally 64, adjusted for view distance
 #define MINMAX_ALMOST_HALF ((MINMAX_LENGTH/2)-1)
+#define CAMERA_TILT_DEFAULT -266
+#define CAMERA_TILT_MIN -350
+#define CAMERA_TILT_MAX -200
 
 extern long zoom_distance_setting; // CFG setting
 extern long frontview_zoom_distance_setting; // CFG setting
@@ -67,9 +70,9 @@ struct ComponentVector {
 struct Camera {
     struct Coord3d mappos;
     unsigned char view_mode;
-    int orient_a;
-    int orient_b;
-    int orient_c;
+    int rotation_angle_x;
+    int rotation_angle_y;
+    int rotation_angle_z;
     int horizontal_fov; // Horizontal Field of View in degrees
     int zoom;
     int inertia_rotation;
@@ -86,12 +89,12 @@ extern long previous_cam_mappos_z;
 extern long interpolated_cam_mappos_x;
 extern long interpolated_cam_mappos_y;
 extern long interpolated_cam_mappos_z;
-extern long previous_cam_orient_a;
-extern long previous_cam_orient_b;
-extern long previous_cam_orient_c;
-extern long interpolated_cam_orient_a;
-extern long interpolated_cam_orient_b;
-extern long interpolated_cam_orient_c;
+extern long previous_cam_rotation_angle_x;
+extern long previous_cam_rotation_angle_y;
+extern long previous_cam_rotation_angle_z;
+extern long interpolated_cam_rotation_angle_x;
+extern long interpolated_cam_rotation_angle_y;
+extern long interpolated_cam_rotation_angle_z;
 extern long previous_camera_zoom;
 extern long interpolated_camera_zoom;
 
@@ -122,6 +125,7 @@ void update_camera_zoom_bounds(struct Camera *cam,unsigned long zoom_max,unsigne
 void view_set_camera_y_inertia(struct Camera *cam, long a2, long a3);
 void view_set_camera_x_inertia(struct Camera *cam, long a2, long a3);
 void view_set_camera_rotation_inertia(struct Camera *cam, long a2, long a3);
+void view_set_camera_tilt(struct Camera *cam, unsigned char mode);
 
 void update_all_players_cameras(void);
 void init_player_cameras(struct PlayerInfo *player);

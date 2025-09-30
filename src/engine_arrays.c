@@ -22,7 +22,6 @@
 #include "globals.h"
 #include "bflib_basics.h"
 #include "bflib_math.h"
-#include "bflib_memory.h"
 #include "bflib_fileio.h"
 #include "engine_lenses.h"
 #include "config.h"
@@ -997,7 +996,7 @@ void init_iso_3d_conversion_tables(void)
 /**
  * Fills randomisors array used for mesh deformations.
  */
-void setup_3d(void)
+void setup_mesh_randomizers(void)
 {
     unsigned long seed;
     long i;
@@ -1084,9 +1083,9 @@ void generate_wibble_table(void)
         empty_wibl = &blank_wibble_table[32*n];
         for (i=0; i < 32; i++)
         {
-            LbMemorySet(wibl, 0, sizeof(struct WibbleTable));
+            memset(wibl, 0, sizeof(struct WibbleTable));
             wibl++;
-            LbMemorySet(empty_wibl, 0, sizeof(struct WibbleTable));
+            memset(empty_wibl, 0, sizeof(struct WibbleTable));
             empty_wibl++;
         }
     }
@@ -1096,18 +1095,18 @@ void generate_wibble_table(void)
     {
         wibl = &wibble_table[i+32];
         n = wibble_random(65447,&seed);
-        wibl->field_0 = (n % 127) - 63;
+        wibl->offset_x = (n % 127) - 63;
         n = wibble_random(65447,&seed);
-        wibl->field_4 = ((n % 127) - 63) / 3;
+        wibl->offset_y = ((n % 127) - 63) / 3;
         n = wibble_random(65447,&seed);
-        wibl->field_8 = (n % 127) - 63;
+        wibl->offset_z = (n % 127) - 63;
         qwibl = &wibble_table[i+64];
         n = wibble_random(65447,&seed);
-        wibl->field_C = (n % 2047) - 1023;
+        wibl->lightness_offset = (n % 2047) - 1023;
         n = wibble_random(65447,&seed);
-        qwibl->field_0 = (n % 127) - 63;
+        qwibl->offset_x = (n % 127) - 63;
         n = wibble_random(65447,&seed);
-        qwibl->field_8 = (n % 127) - 63;
+        qwibl->offset_z = (n % 127) - 63;
     }
 }
 
@@ -1121,11 +1120,9 @@ TbBool load_ceiling_table(void)
     TbBool do_next;
     long i;
     long n;
-    // Prepare filename and open the file
-    wait_for_cd_to_be_available();
     fname = prepare_file_path(FGrp_StdData,"ceiling.txt");
     fh = LbFileOpen(fname, Lb_FILE_MODE_READ_ONLY);
-    if (fh == -1) {
+    if (!fh) {
         return false;
     }
 
@@ -1141,7 +1138,7 @@ TbBool load_ceiling_table(void)
             if ( (nchr == 10) || (nchr == 44) || (nchr == 32) || (nchr == 9) || (nchr == 13) )
                 continue;
         }
-        LbMemorySet(numstr, 0, sizeof(numstr));
+        memset(numstr, 0, sizeof(numstr));
         for (i=0; i < sizeof(numstr); i++)
         {
             numstr[i] = nchr;

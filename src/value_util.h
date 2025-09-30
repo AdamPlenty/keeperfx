@@ -36,7 +36,7 @@ static inline MapCoord value_read_stl_coord(VALUE *value)
 int value_parse_class(VALUE *value);
 int value_parse_model(int oclass, VALUE *value);
 int value_parse_anim(VALUE *value);
-TbBool load_toml_file(const char *textname, const char *fname,VALUE *value, unsigned short flags);
+TbBool load_toml_file(const char *fname,VALUE *value, unsigned short flags);
 
 #define KEY_SIZE 64
 
@@ -94,6 +94,17 @@ TbBool load_toml_file(const char *textname, const char *fname,VALUE *value, unsi
     }\
 }
 
+#define CONDITIONAL_ASSIGN_ARR2_INT_MINMAX(section,name,field1,field2) \
+{\
+    VALUE *val_arr = value_dict_get(section,name);\
+    if (value_type(val_arr) == VALUE_ARRAY)\
+    {\
+        int v1 = value_int32(value_array_get(val_arr, 0));\
+        int v2 = value_int32(value_array_get(val_arr, 1));\
+        if (v1 <= v2) { field1 = v1; field2 = v2; } else { field1 = v2; field2 = v1; }\
+    }\
+}
+
 #define CONDITIONAL_ASSIGN_ARR3_INT(section,name,field1,field2,field3) \
 {\
     VALUE *val_arr = value_dict_get(section,name);\
@@ -116,6 +127,20 @@ TbBool load_toml_file(const char *textname, const char *fname,VALUE *value, unsi
     if (value_type(val) == VALUE_STRING)\
     {\
         field = effect_or_effect_element_id(value_string(val));\
+    }\
+}
+
+#define CONDITIONAL_ASSIGN_SPELL(section,name,field) \
+{\
+    VALUE *val = value_dict_get(section,name);\
+    if (value_type(val) == VALUE_INT32)\
+    {\
+        field = value_int32(val);\
+    }\
+    else\
+    if (value_type(val) == VALUE_STRING)\
+    {\
+        field = get_id(spell_desc,value_string(val));\
     }\
 }
 

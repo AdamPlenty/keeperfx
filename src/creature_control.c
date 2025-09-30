@@ -20,7 +20,6 @@
 #include "creature_control.h"
 #include "globals.h"
 
-#include "bflib_memory.h"
 #include "bflib_math.h"
 #include "bflib_sound.h"
 #include "config_creature.h"
@@ -47,7 +46,7 @@ extern "C" {
  */
 struct CreatureControl *creature_control_get(long cctrl_idx)
 {
-  if ((cctrl_idx < 1) || (cctrl_idx > CREATURES_COUNT))
+  if ((cctrl_idx < 1) || (cctrl_idx >= CREATURES_COUNT))
     return INVALID_CRTR_CONTROL;
   return game.persons.cctrl_lookup[cctrl_idx];
 }
@@ -58,7 +57,7 @@ struct CreatureControl *creature_control_get(long cctrl_idx)
  */
 struct CreatureControl *creature_control_get_from_thing(const struct Thing *thing)
 {
-  if ((thing->ccontrol_idx < 1) || (thing->ccontrol_idx > CREATURES_COUNT))
+  if ((thing->ccontrol_idx < 1) || (thing->ccontrol_idx >= CREATURES_COUNT))
     return INVALID_CRTR_CONTROL;
   return game.persons.cctrl_lookup[thing->ccontrol_idx];
 }
@@ -75,14 +74,9 @@ TbBool creature_control_exists(const struct CreatureControl *cctrl)
 {
   if (creature_control_invalid(cctrl))
       return false;
-  if ((cctrl->flgfield_1 & CCFlg_Exists) == 0)
+  if ((cctrl->creature_control_flags & CCFlg_Exists) == 0)
       return false;
   return true;
-}
-
-TbBool creature_control_exists_in_thing(const struct Thing *thing)
-{
-    return creature_control_exists(creature_control_get_from_thing(thing));
 }
 
 long i_can_allocate_free_control_structure(void)
@@ -92,7 +86,7 @@ long i_can_allocate_free_control_structure(void)
         struct CreatureControl* cctrl = game.persons.cctrl_lookup[i];
         if (!creature_control_invalid(cctrl))
         {
-            if ((cctrl->flgfield_1 & CCFlg_Exists) == 0)
+            if ((cctrl->creature_control_flags & CCFlg_Exists) == 0)
                 return i;
         }
   }
@@ -106,10 +100,10 @@ struct CreatureControl *allocate_free_control_structure(void)
         struct CreatureControl* cctrl = game.persons.cctrl_lookup[i];
         if (!creature_control_invalid(cctrl))
         {
-            if ((cctrl->flgfield_1 & CCFlg_Exists) == 0)
+            if ((cctrl->creature_control_flags & CCFlg_Exists) == 0)
             {
-                LbMemorySet(cctrl, 0, sizeof(struct CreatureControl));
-                cctrl->flgfield_1 |= CCFlg_Exists;
+                memset(cctrl, 0, sizeof(struct CreatureControl));
+                cctrl->creature_control_flags |= CCFlg_Exists;
                 cctrl->index = i;
                 return cctrl;
             }
@@ -120,7 +114,7 @@ struct CreatureControl *allocate_free_control_structure(void)
 
 void delete_control_structure(struct CreatureControl *cctrl)
 {
-    LbMemorySet(cctrl, 0, sizeof(struct CreatureControl));
+    memset(cctrl, 0, sizeof(struct CreatureControl));
 }
 
 void delete_all_control_structures(void)
@@ -130,15 +124,16 @@ void delete_all_control_structures(void)
         struct CreatureControl* cctrl = creature_control_get(i);
         if (!creature_control_invalid(cctrl))
         {
-            if ((cctrl->flgfield_1 & CCFlg_Exists) != 0)
+            if ((cctrl->creature_control_flags & CCFlg_Exists) != 0)
                 delete_control_structure(cctrl);
       }
     }
 }
 
-struct Thing *create_and_control_creature_as_controller(struct PlayerInfo *player, long crmodel, struct Coord3d *pos)
+struct Thing *create_and_control_creature_as_controller(struct PlayerInfo *player, ThingModel crmodel, struct Coord3d *pos)
 {
-    SYNCDBG(6,"Request for model %ld (%s) at (%d,%d,%d)",crmodel, creature_code_name(crmodel),(int)pos->x.val,(int)pos->y.val,(int)pos->z.val);
+    SYNCDBG(6,"Request for model %d (%s) at (%d,%d,%d)",
+        crmodel, creature_code_name(crmodel),(int)pos->x.val,(int)pos->y.val,(int)pos->z.val);
     struct Thing* thing = create_creature(pos, crmodel, player->id_number);
     if (thing_is_invalid(thing))
       return INVALID_THING;
@@ -155,15 +150,15 @@ struct Thing *create_and_control_creature_as_controller(struct PlayerInfo *playe
     set_selected_creature(player, thing);
     player->view_mode_restore = cam->view_mode;
     thing->alloc_flags |= TAlF_IsControlled;
-    thing->rendering_flags |= TRF_Unknown01;
+    thing->rendering_flags |= TRF_Invisible;
     struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
-    cctrl->flgfield_2 |= TF2_Spectator;
+    cctrl->creature_state_flags |= TF2_Spectator;
     cctrl->max_speed = calculate_correct_creature_maxspeed(thing);
     set_player_mode(player, PVT_CreatureContrl);
     set_start_state(thing);
     // Preparing light object
     struct InitLight ilght;
-    LbMemorySet(&ilght, 0, sizeof(struct InitLight));
+    memset(&ilght, 0, sizeof(struct InitLight));
     ilght.mappos.x.val = thing->mappos.x.val;
     ilght.mappos.y.val = thing->mappos.y.val;
     ilght.mappos.z.val = thing->mappos.z.val;
@@ -183,8 +178,8 @@ struct Thing *create_and_control_creature_as_controller(struct PlayerInfo *playe
     {
         if (thing->class_id == TCls_Creature)
         {
-            struct CreatureStats* crstat = creature_stats_get_from_thing(thing);
-            setup_eye_lens(crstat->eye_effect);
+            struct CreatureModelConfig* crconf = creature_stats_get_from_thing(thing);
+            setup_eye_lens(crconf->eye_effect);
         }
     }
     return thing;
@@ -225,7 +220,7 @@ TbBool disband_creatures_group(struct Thing *thing)
 
 struct CreatureSound *get_creature_sound(struct Thing *thing, long snd_idx)
 {
-    unsigned int cmodel = thing->model;
+    ThingModel cmodel = thing->model;
     if ((cmodel < 1) || (cmodel >= game.conf.crtr_conf.model_count))
     {
         ERRORLOG("Trying to get sound for undefined creature type %d",(int)cmodel);
@@ -256,6 +251,8 @@ struct CreatureSound *get_creature_sound(struct Thing *thing, long snd_idx)
         return &game.conf.crtr_conf.creature_sounds[cmodel].foot;
     case CrSnd_Fight:
         return &game.conf.crtr_conf.creature_sounds[cmodel].fight;
+    case CrSnd_Piss:
+        return &game.conf.crtr_conf.creature_sounds[cmodel].piss;
     default:
         // Return dummy element
         return &game.conf.crtr_conf.creature_sounds[0].foot;
@@ -277,7 +274,7 @@ void stop_creature_sound(struct Thing *thing, long snd_idx)
 {
     struct CreatureSound* crsound = get_creature_sound(thing, snd_idx);
     if (crsound->index <= 0) {
-        SYNCDBG(19,"No sample %d for creature %d",snd_idx,thing->model);
+        SYNCDBG(19,"No sample %ld for creature %d",snd_idx,thing->model);
         return;
     }
 
@@ -290,7 +287,7 @@ void stop_creature_sound(struct Thing *thing, long snd_idx)
     }
 }
 
-void play_creature_sound(struct Thing *thing, long snd_idx, long a3, long a4)
+void play_creature_sound(struct Thing *thing, long snd_idx, long priority, long use_flags)
 {
     SYNCDBG(8,"Starting");
     if (playing_creature_sound(thing, snd_idx)) {
@@ -298,32 +295,32 @@ void play_creature_sound(struct Thing *thing, long snd_idx, long a3, long a4)
     }
     struct CreatureSound* crsound = get_creature_sound(thing, snd_idx);
     if (crsound->index <= 0) {
-        SYNCDBG(19,"No sample %d for creature %d",snd_idx,thing->model);
+        SYNCDBG(19,"No sample %ld for creature %d",snd_idx,thing->model);
         return;
     }
-    long i = UNSYNC_RANDOM(crsound->count);
-    SYNCDBG(18,"Playing sample %d (index %d) for creature %d",snd_idx,crsound->index+i,thing->model);
-    if ( a4 ) {
-        thing_play_sample(thing, crsound->index+i, NORMAL_PITCH, 0, 3, 8, a3, FULL_LOUDNESS);
+    long i = SOUND_RANDOM(crsound->count);
+    SYNCDBG(18,"Playing sample %ld (index %ld) for creature %d",snd_idx,crsound->index+i,thing->model);
+    if ( use_flags ) {
+        thing_play_sample(thing, crsound->index+i, NORMAL_PITCH, 0, 3, 8, priority, FULL_LOUDNESS);
     } else {
-        thing_play_sample(thing, crsound->index+i, NORMAL_PITCH, 0, 3, 0, a3, FULL_LOUDNESS);
+        thing_play_sample(thing, crsound->index+i, NORMAL_PITCH, 0, 3, 0, priority, FULL_LOUDNESS);
     }
 }
 
-void play_creature_sound_and_create_sound_thing(struct Thing *thing, long snd_idx, long a2)
+void play_creature_sound_and_create_sound_thing(struct Thing *thing, long snd_idx, long sound_priority)
 {
     if (playing_creature_sound(thing, snd_idx)) {
         return;
     }
     struct CreatureSound* crsound = get_creature_sound(thing, snd_idx);
     if (crsound->index <= 0) {
-        SYNCDBG(14,"No sample %d for creature %d",snd_idx,thing->model);
+        SYNCDBG(14,"No sample %ld for creature %d",snd_idx,thing->model);
         return;
     }
-    long i = UNSYNC_RANDOM(crsound->count);
-    struct Thing* efftng = create_effect(&thing->mappos, TngEff_DamageBlood, thing->owner);
+    long i = SOUND_RANDOM(crsound->count);
+    struct Thing* efftng = create_effect(&thing->mappos, TngEff_Dummy, thing->owner);
     if (!thing_is_invalid(efftng)) {
-        thing_play_sample(efftng, crsound->index+i, NORMAL_PITCH, 0, 3, 0, a2, FULL_LOUDNESS);
+        thing_play_sample(efftng, crsound->index+i, NORMAL_PITCH, 0, 3, 0, sound_priority, FULL_LOUDNESS);
     }
 }
 
@@ -337,11 +334,11 @@ TbBool creature_can_gain_experience(const struct Thing *thing)
     struct Dungeon* dungeon = get_dungeon(thing->owner);
     struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
     // Creatures which reached players max level can't be trained
-    if (cctrl->explevel >= dungeon->creature_max_level[thing->model])
+    if (cctrl->exp_level >= dungeon->creature_max_level[thing->model])
         return false;
     // Creatures which reached absolute max level and have no grow up creature
-    struct CreatureStats* crstat = creature_stats_get_from_thing(thing);
-    if ((cctrl->explevel >= (CREATURE_MAX_LEVEL-1)) && (crstat->grow_up == 0))
+    struct CreatureModelConfig* crconf = creature_stats_get_from_thing(thing);
+    if ((cctrl->exp_level >= (CREATURE_MAX_LEVEL-1)) && (crconf->grow_up == 0))
         return false;
     return true;
 }

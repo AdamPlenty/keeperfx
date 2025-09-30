@@ -5,12 +5,12 @@
 #include "../pre_inc.h"
 
 #include "../game_legacy.h"
-#include "../bflib_memory.h"
 #include "../keeperfx.hpp"
 #include "../lvl_filesdk1.h"
 #include "../slab_data.h"
 #include "../room_util.h"
 #include "../player_instances.h"
+#includw "../gui_msgs.h"
 
 #include "../post_inc.h"
 
@@ -167,7 +167,7 @@ TbBool ftest_parse_arg(char * const arg)
     if(strlen(arg) > 0 && arg[0] != '-')
     {
         FTESTLOG("Argument '%s' provided by user", arg);
-        snprintf(start_params.functest_name, sizeof(start_params.functest_name), "%s", arg);        
+        snprintf(start_params.functest_name, sizeof(start_params.functest_name), "%s", arg);
         return true;
     }
 
@@ -296,7 +296,8 @@ TbBool ftest_setup_test(struct FTestConfig* const test_config)
     strcpy(start_params.selected_campaign, test_config->level_file);
     LevelNumber selected_level = test_config->level;
 
-    TbBool result = change_campaign(strcat(start_params.selected_campaign,".cfg"));
+    str_append(start_params.selected_campaign, sizeof(start_params.selected_campaign), ".cfg");
+    TbBool result = change_campaign(start_params.selected_campaign);
     if(!result)
     {
         FTEST_FAIL_TEST("Failed to load campaign '%d'", start_params.selected_campaign)
@@ -319,7 +320,7 @@ void ftest_quit_game()
 {
     FTESTLOG("Quitting/exiting map");
     struct PlayerInfo *player = get_my_player();
-    set_players_packet_action(player, PckA_Unknown001, 0, 0, 0, 0);           
+    set_players_packet_action(player, PckA_QuitToMainMenu, 0, 0, 0, 0);           
 }
 
 void ftest_srand()
@@ -328,14 +329,20 @@ void ftest_srand()
     {
         if(start_params.functest_seed == 0)
         {
-            game.action_rand_seed = game.play_gameturn;
-            game.unsync_rand_seed = game.play_gameturn;
+            game.action_random_seed = game.play_gameturn;
+            game.ai_random_seed = game.play_gameturn * 9377 + 9439 + game.play_gameturn;
+            game.player_random_seed = game.play_gameturn * 9439 + 9377 + game.play_gameturn;
+            game.unsync_random_seed = game.play_gameturn;
+            game.sound_random_seed = game.play_gameturn * 7919 + 7927;
             srand(game.play_gameturn);
         }
         else
         {
-            game.action_rand_seed = start_params.functest_seed;
-            game.unsync_rand_seed = start_params.functest_seed;
+            game.action_random_seed = start_params.functest_seed;
+            game.ai_random_seed = start_params.functest_seed * 9377 + 9439 + game.play_gameturn;
+            game.player_random_seed = start_params.functest_seed * 9439 + 9377 + game.play_gameturn;
+            game.unsync_random_seed = start_params.functest_seed;
+            game.sound_random_seed = start_params.functest_seed * 7919 + 7927;
             srand(start_params.functest_seed);
         }
     }
@@ -445,7 +452,7 @@ FTestFrameworkState ftest_update(FTestFrameworkState* const out_prev_state)
 
         if(vars->pending_init != NULL)
         {
-            message_add_fmt(PLAYER0, "Initializing Functional Test %s", vars->pending_init->test_name);
+            message_add_fmt(MsgType_Player, PLAYER0, "Initializing Functional Test %s", vars->pending_init->test_name);
             FTESTLOG("Initializing Functional Test %s", vars->pending_init->test_name);
             if(vars->pending_init->init_func)
             {

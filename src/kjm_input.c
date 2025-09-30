@@ -22,7 +22,6 @@
 #include "globals.h"
 #include "bflib_basics.h"
 
-#include "bflib_memory.h"
 #include "bflib_video.h"
 #include "bflib_keybrd.h"
 #include "bflib_mouse.h"
@@ -156,7 +155,7 @@ struct KeyToStringInit key_to_string_init[] = {
   {  0,     0},
 };
 
-// An array of the defined keys, when an indexed key is true in this array, 
+// An array of the defined keys, when an indexed key is true in this array,
 // it should be highlighted in font color #3 in the list, to show that it was swapped
 TbBool defined_keys_that_have_been_swapped[GAME_KEYS_COUNT] = { false };
 /******************************************************************************/
@@ -176,16 +175,6 @@ long GetMouseY(void)
 {
     long result = lbDisplay.MMouseY * (long)pixel_size;
     return result;
-}
-
-short is_mouse_pressed_leftbutton(void)
-{
-  return lbDisplay.LeftButton;
-}
-
-short is_mouse_pressed_rightbutton(void)
-{
-  return lbDisplay.RightButton;
 }
 
 short is_mouse_pressed_lrbutton(void)
@@ -563,7 +552,7 @@ void define_key_input(void)
  */
 void init_key_to_strings(void)
 {
-    LbMemorySet(key_to_string, 0, sizeof(key_to_string));
+    memset(key_to_string, 0, sizeof(key_to_string));
     for (struct KeyToStringInit* ktsi = &key_to_string_init[0]; ktsi->chr != 0; ktsi++)
     {
         long k = ktsi->chr;

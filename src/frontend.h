@@ -31,7 +31,7 @@ extern "C" {
 // Limits for GUI arrays
 #define ACTIVE_BUTTONS_COUNT        86
 #define MENU_LIST_ITEMS_COUNT       51
-#define FRONTEND_BUTTON_INFO_COUNT 119
+#define FRONTEND_BUTTON_INFO_COUNT 113
 #define NET_MESSAGES_COUNT           8
 #define NET_MESSAGE_LEN             64
 // Sprite limits
@@ -59,7 +59,7 @@ enum FrontendMenuStates {
   FeSt_NET_START, /**< Network game start screen (the menu with chat), when created new session or joined existing session. */
   FeSt_START_KPRLEVEL,
   FeSt_START_MPLEVEL,
-  FeSt_UNKNOWN09,
+  FeSt_QUIT_GAME,
   FeSt_LOAD_GAME, // 10
   FeSt_INTRO,
   FeSt_STORY_POEM,
@@ -70,15 +70,15 @@ enum FrontendMenuStates {
   FeSt_LEVEL_STATS,
   FeSt_HIGH_SCORES,
   FeSt_TORTURE,
-  FeSt_UNKNOWN20, // 20
+  FeSt_UNUSED_STATE1, // 20 - Unused state, draws GUI but not used
   FeSt_OUTRO,
-  FeSt_UNKNOWN22,
-  FeSt_UNKNOWN23,
+  FeSt_UNUSED_STATE2, // Unused state
+  FeSt_UNUSED_STATE3, // Unused state
   FeSt_NETLAND_VIEW,
   FeSt_PACKET_DEMO,
   FeSt_FEDEFINE_KEYS,
   FeSt_FEOPTIONS,
-  FeSt_UNKNOWN28,
+  FeSt_UNUSED_STATE4, // Unused state
   FeSt_STORY_BIRTHDAY,
   FeSt_LEVEL_SELECT, //30
   FeSt_CAMPAIGN_SELECT,
@@ -223,7 +223,8 @@ enum IngameButtonDesignationIDs {
     BID_MNFCT_TD30, //130
     BID_MNFCT_TD31,
     BID_MNFCT_TD32,
-    BID_MNFCT_NXPG
+    BID_MNFCT_NXPG,
+    BID_QUERY_2
 };
 
 struct GuiMenu;
@@ -231,8 +232,11 @@ struct GuiButton;
 struct TbLoadFiles;
 
 struct DemoItem { //sizeof = 5
-    unsigned char numfield_0;
-    const char *fname;
+    uint8_t kind;
+    union {
+      FrontendMenuState state;
+      const char *fname;
+    };
 };
 
 struct NetMessage { // sizeof = 0x41
@@ -270,29 +274,14 @@ extern int frontend_menu_state;
 extern int load_game_scroll_offset;
 extern unsigned char video_gamma_correction;
 extern MenuID vid_change_query_menu;
+extern TbBool right_click_tag_mode_toggle;
+extern unsigned char default_tag_mode;
 
 // *** SPRITES ***
-extern struct TbSprite *font_sprites;
-extern struct TbSprite *end_font_sprites;
-extern unsigned char * font_data;
-extern struct TbSprite *frontend_font[FRONTEND_FONTS_COUNT];
-extern struct TbSprite *frontend_end_font[FRONTEND_FONTS_COUNT];
-extern unsigned char * frontend_font_data[FRONTEND_FONTS_COUNT];
-extern unsigned char * frontend_end_font_data[FRONTEND_FONTS_COUNT];
-extern struct TbSprite *button_sprite;
-extern struct TbSprite *end_button_sprites;
-extern unsigned char * button_sprite_data;
-extern unsigned long end_button_sprite_data;
-extern struct TbSprite *winfont;
-extern struct TbSprite *end_winfonts;
-extern unsigned char * winfont_data;
-extern unsigned char * end_winfont_data;
-extern struct TbSprite *edit_icon_sprites;
-extern struct TbSprite *end_edit_icon_sprites;
-extern unsigned char * edit_icon_data;
-extern struct TbSprite *port_sprite;
-extern struct TbSprite *end_port_sprites;
-extern unsigned char * port_sprite_data;
+extern struct TbSpriteSheet *font_sprites;
+extern struct TbSpriteSheet *frontend_font[FRONTEND_FONTS_COUNT];
+extern struct TbSpriteSheet *button_sprites;
+extern struct TbSpriteSheet *winfont;
 extern unsigned long playing_bad_descriptive_speech;
 extern unsigned long playing_good_descriptive_speech;
 extern long scrolling_index;
@@ -323,17 +312,14 @@ extern const unsigned long alliance_grid[4][4];
 
 #if (BFDEBUG_LEVEL > 0)
 #define TESTFONTS_COUNT 12
-extern struct TbSprite *testfont[TESTFONTS_COUNT];
-extern struct TbSprite *testfont_end[TESTFONTS_COUNT];
-extern unsigned char * testfont_data[TESTFONTS_COUNT];
+extern struct TbSpriteSheet *testfont[TESTFONTS_COUNT];
 extern unsigned char *testfont_palette[3];
 #endif
 /******************************************************************************/
-extern char *mdlf_default(struct TbLoadFiles *);
+const char * mdlf_default(const char *);
 /******************************************************************************/
 int frontend_font_char_width(int fnt_idx,char c);
 int frontend_font_string_width(int fnt_idx, const char *str);
-TbBool frontend_font_string_draw(int scr_x, int scr_y, int dst_width, int dst_height, int fnt_idx, const char *str, unsigned short fdflags);
 
 void create_error_box(TextStringId msg_idx);
 void create_message_box(const char *title, const char *line1, const char *line2, const char *line3, const char *line4, const char* line5);
