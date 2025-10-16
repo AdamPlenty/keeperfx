@@ -1642,9 +1642,9 @@ void clear_things_and_persons_data(void)
         // Create the list of free indices (skip index 0 since that's INVALID_THING
         if (i > 0) {
             if (i < SYNCED_THINGS_COUNT) {
-                game.synced_free_things[i-1] = i;
+                game.synced_free_things[SYNCED_THINGS_COUNT-i] = i;
             } else {
-                game.unsynced_free_things[i-1-SYNCED_THINGS_COUNT] = i;
+                game.unsynced_free_things[THINGS_COUNT-i] = i;
             }
         }
     }
@@ -1729,9 +1729,9 @@ void delete_all_thing_structures(void)
           delete_thing_structure(thing, 1);
       }
         if (i < SYNCED_THINGS_COUNT) {
-            game.synced_free_things[i-1] = i;
+            game.synced_free_things[SYNCED_THINGS_COUNT-i] = i;
         } else {
-            game.unsynced_free_things[i-1-SYNCED_THINGS_COUNT] = i;
+            game.unsynced_free_things[THINGS_COUNT-i] = i;
         }
     }
     game.synced_free_things_count = SYNCED_THINGS_COUNT-1;
@@ -2746,6 +2746,7 @@ void update(void)
         things_stats_debug_dump();
         creature_stats_debug_dump();
 #endif
+        game.play_gameturn++;
     }
 
     message_update();
@@ -2758,6 +2759,7 @@ void update(void)
 void first_gameturn_actions() {
     if (game.play_gameturn == 1) {
         apply_default_flee_and_imprison_setting();
+        send_sprite_zip_count_to_other_players();
     }
 }
 
@@ -3394,11 +3396,6 @@ void gameplay_loop_logic()
     if (frametime_enabled())
         framerate_measurement_capture(Framerate_Logic);
 
-    if ((game.flags_font & FFlg_NetworkTimeout) != 0)
-    {
-        if (game.play_gameturn == 4)
-            LbNetwork_ChangeExchangeTimeout(0);
-    }
 #ifdef FUNCTESTING
     if(flag_is_set(start_params.functest_flags, FTF_Enabled))
     {

@@ -117,7 +117,6 @@ obj/bflib_mshandler.o \
 obj/bflib_mspointer.o \
 obj/bflib_netsession.o \
 obj/bflib_netsp.o \
-obj/bflib_netsp_ipx.o \
 obj/bflib_network.o \
 obj/bflib_planar.o \
 obj/bflib_render.o \
@@ -434,6 +433,11 @@ include version.mk
 
 VER_STRING = $(VER_MAJOR).$(VER_MINOR).$(VER_RELEASE).$(BUILD_NUMBER) $(PACKAGE_SUFFIX)
 
+# Enable parallel compilation by default. Users can still override with: make -j8, make -j1, etc.
+ifndef MAKEFLAGS
+  MAKEFLAGS = -j$(shell nproc)
+endif
+
 # load depenency packages
 include prebuilds.mk
 
@@ -560,7 +564,6 @@ define BUILD_CPP_FILES_CMD
 	@grep -E "#include \"(\.\./)?(\.\./)?pre_inc.h\"" "$<" >/dev/null || echo "\n\nAll files should have #include \"pre_inc.h\" as first include\n\n" >&2 | false
 	@grep -E "#include \"(\.\./)?(\.\./)?post_inc.h\"" "$<" >/dev/null || echo "\n\nAll files should have #include \"post_inc.h\" as last include\n\n" >&2 | false
 	$(CPP) $(CXXFLAGS) -o"$@" "$<"
-	-$(ECHO) ' '
 endef
 
 obj/std/%.o: src/%.cpp libexterns $(GENSRC)
@@ -575,7 +578,6 @@ define BUILD_CC_FILES_CMD
 	@grep -E "#include \"(\.\./)?(\.\./)?pre_inc.h\"" "$<" >/dev/null || echo "\n\nAll files should have #include \"pre_inc.h\" as first include\n\n" >&2 | false
 	@grep -E "#include \"(\.\./)?(\.\./)?post_inc.h\"" "$<" >/dev/null || echo "\n\nAll files should have #include \"post_inc.h\" as last include\n\n" >&2 | false
 	$(CC) $(CFLAGS) -o"$@" "$<"
-	-$(ECHO) ' '
 endef
 
 obj/std/%.o: src/%.c libexterns $(GENSRC)
