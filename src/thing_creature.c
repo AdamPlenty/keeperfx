@@ -1098,7 +1098,7 @@ TbBool set_thing_spell_flags_f(struct Thing *thing, SpellKind spell_idx, GameTur
         {
             set_flag(cctrl->spell_flags, CSAfF_Fear);
             setup_combat_flee_position(thing);
-            if (is_thing_some_way_controlled(thing))
+            if (is_thing_directly_controlled(thing))
             {
                 struct PlayerInfo* player = get_player(thing->owner);
                 if (player->controlled_thing_idx == thing->index)
@@ -1315,19 +1315,16 @@ TbBool clear_thing_spell_flags_f(struct Thing *thing, unsigned long spell_flags,
     && (creature_under_spell_effect(thing, CSAfF_Fear)))
     {
         clear_flag(cctrl->spell_flags, CSAfF_Fear);
-        if (is_thing_some_way_controlled(thing))
+        if (is_thing_passenger_controlled_by_player(thing,thing->owner))
         {
             struct PlayerInfo* player = get_player(thing->owner);
-            if (player->controlled_thing_idx == thing->index)
+            char active_menu = game.active_panel_mnu_idx;
+            leave_creature_as_passenger(player, thing);
+            control_creature_as_controller(player, thing);
+            if (is_my_player(player))
             {
-                char active_menu = game.active_panel_mnu_idx;
-                leave_creature_as_passenger(player, thing);
-                control_creature_as_controller(player, thing);
-                if (is_my_player(player))
-                {
-                    turn_off_all_panel_menus();
-                    turn_on_menu(active_menu);
-                }
+                turn_off_all_panel_menus();
+                turn_on_menu(active_menu);
             }
         }
         cleared = true;
@@ -6221,6 +6218,7 @@ long update_creature_levels(struct Thing *thing)
     {
         remove_creature_score_from_owner(thing); // the opposite is in set_creature_level()
         set_creature_level(thing, cctrl->exp_level+1);
+        check_experience_upgrade(thing);
         return 1;
     }
     // If it is highest level, check if the creature can grow up.
