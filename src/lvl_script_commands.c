@@ -721,7 +721,8 @@ static void add_to_party_check(const struct ScriptLine *scline)
       SCRPTERRLOG("Unknown creature, '%s'", scline->tp[1]);
       return;
     }
-    long objective_id = get_rid(hero_objective_desc, scline->tp[4]);
+    PlayerNumber target = -1;
+    long objective_id = get_objective_id_with_potential_target(scline->tp[4], &target);
     if (objective_id == -1)
     {
       SCRPTERRLOG("Unknown party member objective, '%s'", scline->tp[4]);
@@ -731,7 +732,7 @@ static void add_to_party_check(const struct ScriptLine *scline)
 
     if ((get_script_current_condition() == CONDITION_ALWAYS) && (next_command_reusable == 0))
     {
-        add_member_to_party(party_id, crtr_id, scline->np[2], scline->np[3], objective_id, scline->np[5]);
+        add_member_to_party(party_id, crtr_id, scline->np[2], scline->np[3], objective_id, scline->np[5], target);
     } else
     {
         if (game.script.party_triggers_num < PARTY_TRIGGERS_COUNT)
@@ -746,6 +747,7 @@ static void add_to_party_check(const struct ScriptLine *scline)
             pr_trig->objectv = objective_id;
             pr_trig->countdown = scline->np[5];
             pr_trig->condit_idx = get_script_current_condition();
+            pr_trig->target = target;
         }
         else
         {
@@ -1071,7 +1073,7 @@ static int script_transfer_creature(PlayerNumber plyr_idx, ThingModel crmodel, l
     {
         thing = script_get_creature_by_criteria(plyr_idx, crmodel, criteria);
         cctrl = creature_control_get_from_thing(thing);
-        if ((thing_is_invalid(thing)) && (i == 0))
+        if ((!thing_exists(thing)) && (i == 0))
         {
             SYNCDBG(5, "No matching player %d creature of model %d found to transfer.", (int)plyr_idx, (int)crmodel);
             break;
@@ -1588,7 +1590,7 @@ static void set_heart_health_check(const struct ScriptLine *scline)
 static void set_heart_health_process(struct ScriptContext *context)
 {
     struct Thing* heartng = get_player_soul_container(context->player_idx);
-    if (!thing_is_invalid(heartng))
+    if (thing_exists(heartng))
     {
         heartng->health = (short)context->value->longs[1];
     }
@@ -3108,7 +3110,7 @@ static void set_creature_configuration_process(struct ScriptContext* context)
         {
             crconf->eye_effect = value;
             struct Thing* thing = thing_get(get_my_player()->influenced_thing_idx);
-            if(!thing_is_invalid(thing))
+            if(thing_exists(thing))
             {
                 if (thing->model == creatid)
                 {

@@ -1589,7 +1589,7 @@ int add_pretty_and_convert_to_imp_stack(struct Dungeon *dungeon, int max_tasks)
     struct Thing *heartng;
     heartng = get_player_soul_container(dungeon->owner);
     TRACE_THING(heartng);
-    if (thing_is_invalid(heartng)) {
+    if (!thing_exists(heartng)) {
         WARNLOG("The player %d has no heart, no dungeon position available",(int)dungeon->owner);
         return 0;
     }
@@ -1613,10 +1613,6 @@ int add_pretty_and_convert_to_imp_stack(struct Dungeon *dungeon, int max_tasks)
  * If either thing owner or ground owner doesn't match, we can't pick that thing.
  * Additionally, we have a special condition in case our thing + our ground, because
  * in that case the thing may already be on a correct position.
- *
- * @param thing
- * @param dungeon
- * @param rkind
  * @return
  */
 TbBool thing_can_be_picked_to_place_in_player_room_of_role(const struct Thing* thing, PlayerNumber plyr_idx, RoomRole rrole, unsigned short flags)
@@ -3232,7 +3228,7 @@ long check_out_worker_pickup_crate_to_arm(struct Thing *creatng, struct DiggerSt
         }
     }
     // Either the crate or thing to arm is gone - remove the task
-    if (thing_is_invalid(cratng))
+    if (!thing_exists(cratng))
     {
         dstack->task_type = DigTsk_None;
         return -1;
