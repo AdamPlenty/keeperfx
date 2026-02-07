@@ -119,7 +119,7 @@ extern TbBool process_players_dungeon_control_cheats_packet_action(PlayerNumber 
 extern TbBool change_campaign(const char *cmpgn_fname);
 extern int total_sprite_zip_count;
 /******************************************************************************/
-unsigned long scheduled_unpause_time = 0;
+TbBool unpausing_in_progress = 0;
 /******************************************************************************/
 void set_packet_action(struct Packet *pckt, unsigned char pcktype, long par1, long par2, unsigned short par3, unsigned short par4)
 {
@@ -569,9 +569,15 @@ void process_chat_message_end(int player_id, const char *message)
     if (message[0] != '\0') {
         memcpy(player->mp_message_text, message, PLAYER_MP_MESSAGE_LEN);
         memcpy(player->mp_message_text_last, message, PLAYER_MP_MESSAGE_LEN);
-        lua_on_chatmsg(player_id, player->mp_message_text);
-        if (message[0] != cmd_char || !cmd_exec(player_id, player->mp_message_text + 1) || (game.system_flags & GSF_NetworkActive) != 0) {
-            message_add(MsgType_Player, player_id, player->mp_message_text);
+        if (frontend_menu_state == FeSt_NET_START) {
+            if (!try_starting_level_from_chat(player->mp_message_text, player_id)) {
+                add_message(player_id, player->mp_message_text);
+            }
+        } else {
+            lua_on_chatmsg(player_id, player->mp_message_text);
+            if (message[0] != cmd_char || !cmd_exec(player_id, player->mp_message_text + 1) || (game.system_flags & GSF_NetworkActive) != 0) {
+                message_add(MsgType_Player, player_id, player->mp_message_text);
+            }
         }
     }
     memset(player->mp_message_text, 0, PLAYER_MP_MESSAGE_LEN);
@@ -813,8 +819,8 @@ TbBool process_players_global_packet_action(PlayerNumber plyr_idx)
       toggle_creature_tendencies(player, pckt->actn_par1);
       if (is_my_player(player)) {
           dungeon = get_players_dungeon(player);
-          game.creatures_tend_imprison = ((dungeon->creature_tendencies & 0x01) != 0);
-          game.creatures_tend_flee = ((dungeon->creature_tendencies & 0x02) != 0);
+          game.creatures_tend_imprison = ((dungeon->creature_tendencies & CrTend_Imprison) != 0);
+          game.creatures_tend_flee = ((dungeon->creature_tendencies & CrTend_Flee) != 0);
       }
       return 0;
   case PckA_CheatUnusedPlaceholder065:
@@ -1295,6 +1301,21 @@ void process_first_person_look(struct Thing *thing, struct Packet *pckt, long cu
     *out_roll = 170 * horizontalTurnSpeed / maxTurnSpeed;
 }
 
+TbBool can_process_creature_input(struct Thing *thing)
+{
+    if (thing->class_id != TCls_Creature) {
+        return false;
+    }
+    if (creature_is_dying(thing)) {
+        return false;
+    }
+    struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
+    if ((cctrl->stateblock_flags != 0) || (thing->active_state == CrSt_CreatureUnconscious)) {
+        return false;
+    }
+    return true;
+}
+
 void process_players_creature_control_packet_control(long idx)
 {
     struct InstanceInfo *inst_inf;
@@ -1304,13 +1325,9 @@ void process_players_creature_control_packet_control(long idx)
     struct PlayerInfo* player = get_player(idx);
     struct Packet* pckt = get_packet_direct(player->packet_num);
     struct Thing* cctng = thing_get(player->controlled_thing_idx);
-    if (cctng->class_id != TCls_Creature)
+    if (!can_process_creature_input(cctng))
         return;
     struct CreatureControl* ccctrl = creature_control_get_from_thing(cctng);
-    if (creature_is_dying(cctng))
-        return;
-    if ((ccctrl->stateblock_flags != 0) || (cctng->active_state == CrSt_CreatureUnconscious))
-        return;
     long speed_limit = get_creature_speed(cctng);
     if ((pckt->control_flags & PCtr_MoveUp) != 0)
     {
@@ -1634,13 +1651,6 @@ void set_local_packet_turn(void) {
     MULTIPLAYER_LOG("set_local_packet_turn: turn=%lu checksum=%08lx", (unsigned long)game.play_gameturn, (unsigned long)pckt->checksum);
 }
 
-void check_scheduled_unpause(void) {
-    if (scheduled_unpause_time > 0 && LbTimerClock() >= scheduled_unpause_time) {
-        MULTIPLAYER_LOG("process_packets: Executing scheduled unpause at time=%u", LbTimerClock());
-        scheduled_unpause_time = 0;
-        process_pause_packet(0, 0);
-    }
-}
 
 /**
  * Exchange packets if MP game, then process all packets influencing local game state.
@@ -1655,8 +1665,6 @@ void process_packets(void)
     set_local_packet_turn();
     update_turn_checksums();
     store_local_packet_in_input_lag_queue(player->packet_num);
-
-    check_scheduled_unpause();
 
     if (game.game_kind != GKind_LocalGame)
     {
@@ -1728,7 +1736,7 @@ void process_packets(void)
     SYNCDBG(7,"Finished");
 }
 
-static TbBool try_starting_level_from_chat(char* message, long player_id)
+TbBool try_starting_level_from_chat(char* message, long player_id)
 {
     char *separator_pos = strchr(message, ':');
     if (!separator_pos) {
@@ -1764,21 +1772,6 @@ static TbBool try_starting_level_from_chat(char* message, long player_id)
     set_selected_level_number(level_num);
     frontend_set_state(FeSt_START_MPLEVEL);
     return true;
-}
-
-static void handle_chat_message(char* message, long player_id, TbBool clear_text, char* text_to_clear)
-{
-    if (try_starting_level_from_chat(message, player_id)) {
-        if (clear_text) {
-            text_to_clear[0] = '\0';
-        }
-        return;
-    }
-
-    add_message(player_id, message);
-    if (clear_text) {
-        text_to_clear[0] = '\0';
-    }
 }
 
 void process_frontend_packets(void)
@@ -1844,12 +1837,8 @@ void process_frontend_packets(void)
     struct PlayerInfo* player = get_player(i);
     if ((nspckt->networkstatus_flags & 0x01) != 0)
     {
-        long k;
         switch (nspckt->networkstatus_flags >> 3)
         {
-        case 2:
-            handle_chat_message((char*)&nspckt->param1, i, false, NULL);
-            break;
         case 3:
             if (!validate_versions())
             {
@@ -1872,48 +1861,9 @@ void process_frontend_packets(void)
         case 7:
             fe_computer_players = nspckt->param1;
             break;
-        case 8:
-        {
-            k = strlen(player->mp_message_text);
-            unsigned short c;
-            if (nspckt->param1 == KC_BACK)
-            {
-                if (k > 0)
-                {
-                    k--;
-                    player->mp_message_text[k] = '\0';
-                }
-            }
-            else if (nspckt->param1 == KC_RETURN)
-            {
-                if (k > 0)
-                {
-                    handle_chat_message(player->mp_message_text, i, true, player->mp_message_text);
-                }
-            }
-            else
-            {
-                c = key_to_ascii(nspckt->param1, nspckt->param2);
-                if ((c != 0) && (frontend_font_char_width(1, c) > 1) && (k < 62))
-                {
-                    player->mp_message_text[k] = c;
-                    k++;
-                    player->mp_message_text[k] = '\0';
-                }
-            }
-            if (frontend_font_string_width(1, player->mp_message_text) >= 420)
-            {
-                if (k > 0)
-                {
-                    k--;
-                    player->mp_message_text[k] = '\0';
-                }
-            }
+        default:
             break;
         }
-      default:
-        break;
-      }
       if (frontend_alliances == -1)
       {
         if (nspckt->frontend_alliances != -1)
@@ -1921,7 +1871,7 @@ void process_frontend_packets(void)
       }
       if (fe_computer_players == 2)
       {
-        k = ((nspckt->networkstatus_flags & 0x06) >> 1);
+        long k = ((nspckt->networkstatus_flags & 0x06) >> 1);
         if (k != 2)
           fe_computer_players = k;
       }
@@ -1952,12 +1902,12 @@ void apply_default_flee_and_imprison_setting(void)
     struct Dungeon* dungeon = get_dungeon(player->id_number);
     unsigned short tendencies_to_toggle = 0;
 
-    TbBool current_imprison_state = (dungeon->creature_tendencies & 0x01) != 0;
+    TbBool current_imprison_state = (dungeon->creature_tendencies & CrTend_Imprison) != 0;
     if (IMPRISON_BUTTON_DEFAULT != current_imprison_state) {
         tendencies_to_toggle |= CrTend_Imprison;
     }
 
-    TbBool current_flee_state = (dungeon->creature_tendencies & 0x02) != 0;
+    TbBool current_flee_state = (dungeon->creature_tendencies & CrTend_Flee) != 0;
     if (FLEE_BUTTON_DEFAULT != current_flee_state) {
         tendencies_to_toggle |= CrTend_Flee;
     }
