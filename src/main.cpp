@@ -3982,7 +3982,7 @@ void game_loop(void)
           {
               TimerFreeze = true;
           }
-        memset(&Timer, 0, sizeof(Timer));
+          memset(&Timer, 0, sizeof(Timer));
       }
       LbScreenClear(0);
       LbScreenSwap();
