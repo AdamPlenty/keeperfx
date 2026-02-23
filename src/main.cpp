@@ -3974,7 +3974,14 @@ void game_loop(void)
       dungeon->lvstats.end_time = starttime;
       if (!TimerNoReset)
       {
-        TimerFreeze = true;
+          if (is_feature_on(Ft_SkipHeartZoom))
+          {
+              timerstarttime = starttime;
+          }
+          else
+          {
+              TimerFreeze = true;
+          }
         memset(&Timer, 0, sizeof(Timer));
       }
       LbScreenClear(0);
