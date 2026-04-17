@@ -404,10 +404,10 @@ void prepare_map_fade_buffers(unsigned char *fade_src, unsigned char *fade_dest,
     }
 }
 
-long map_fade_in(long a)
+long map_fade_in(long palette_fade_step)
 {
     SYNCDBG(6,"Starting");
-    if (a == 0)
+    if (palette_fade_step == 0)
     {
         map_fade_ghost_table = poly_pool;
         map_fade_src = poly_pool + PALETTE_COLORS*PALETTE_COLORS;
@@ -416,17 +416,14 @@ long map_fade_in(long a)
         generate_map_fade_ghost_table("data/mapfadeg.dat", engine_palette, map_fade_ghost_table);
     }
     map_fade(lbDisplay.WScreen, map_fade_dest, map_fade_src, pixmap.fade_tables, map_fade_ghost_table,
-      a, 320, 200, lbDisplay.GraphicsScreenWidth);
-    long nxamount =  a + 4;
-    if (nxamount > 32)
-        nxamount = 32;
-    return nxamount;
+        palette_fade_step, 320, 200, lbDisplay.GraphicsScreenWidth);
+    return (8 - get_my_player()->instance_remain_turns) * 4;
 }
 
-long map_fade_out(long a)
+long map_fade_out(long palette_fade_step)
 {
     SYNCDBG(6,"Starting");
-    if (a == 32)
+    if (palette_fade_step == 32)
     {
         map_fade_ghost_table = poly_pool;
         map_fade_src = poly_pool + PALETTE_COLORS*PALETTE_COLORS;
@@ -435,11 +432,8 @@ long map_fade_out(long a)
         generate_map_fade_ghost_table("data/mapfadeg.dat", engine_palette, map_fade_ghost_table);
     }
     map_fade(lbDisplay.WScreen, map_fade_dest, map_fade_src, pixmap.fade_tables, map_fade_ghost_table,
-      a, 320, 200, lbDisplay.GraphicsScreenWidth);
-    long nxamount =  a - 4;
-    if (a < 0)
-        nxamount = 0;
-    return nxamount;
+      palette_fade_step, 320, 200, lbDisplay.GraphicsScreenWidth);
+    return get_my_player()->instance_remain_turns * 4;
 }
 
 void set_sprite_view_3d(void)
@@ -514,7 +508,7 @@ void set_engine_view(struct PlayerInfo *player, long val)
     switch ( val )
     {
     case PVM_EmptyView:
-        player->acamera = &player->cameras[CamIV_Isometric];
+        set_player_active_camera(player, CamIV_Isometric);
         // Allow view mode 0 only for non-local-human players
         if (!is_my_player(player))
             break;
@@ -525,7 +519,7 @@ void set_engine_view(struct PlayerInfo *player, long val)
         val = PVM_CreatureView;
         // fall through
     case PVM_CreatureView:
-        player->acamera = &player->cameras[CamIV_FirstPerson];
+        set_player_active_camera(player, CamIV_FirstPerson);
         sync_local_camera(player);
         if (!is_my_player(player))
             break;
@@ -537,8 +531,10 @@ void set_engine_view(struct PlayerInfo *player, long val)
         break;
     case PVM_IsoWibbleView:
     case PVM_IsoStraightView:
-        player->acamera = &player->cameras[CamIV_Isometric];
-        player->acamera->view_mode = val;
+    {
+        struct Camera *camera = &player->cameras[CamIV_Isometric];
+        set_player_active_camera(player, CamIV_Isometric);
+        camera->view_mode = val;
         sync_local_camera(player);
         if (!is_my_player(player))
             break;
@@ -548,8 +544,9 @@ void set_engine_view(struct PlayerInfo *player, long val)
         S3DSetLineOfSightFunction(dummy_sound_line_of_sight);
         S3DSetDeadzoneRadius(1280);
         break;
+    }
     case PVM_ParchmentView:
-        player->acamera = &player->cameras[CamIV_Parchment];
+        set_player_active_camera(player, CamIV_Parchment);
         sync_local_camera(player);
         if (!is_my_player(player))
             break;
@@ -561,7 +558,7 @@ void set_engine_view(struct PlayerInfo *player, long val)
         // In fade states, keep the settings unchanged
         break;
     case PVM_FrontView:
-        player->acamera = &player->cameras[CamIV_FrontView];
+        set_player_active_camera(player, CamIV_FrontView);
         sync_local_camera(player);
         if (!is_my_player(player))
             break;
@@ -578,7 +575,8 @@ void set_engine_view(struct PlayerInfo *player, long val)
 void draw_overlay_compass(long base_x, long base_y)
 {
     struct PlayerInfo* player = get_my_player();
-    struct Camera* cam = get_local_camera(player->acamera);
+    struct Camera* camera = get_player_active_camera(player);
+    struct Camera* cam = get_local_camera(camera);
     unsigned short flg_mem = lbDisplay.DrawFlags;
     LbTextSetFont(winfont);
     lbDisplay.DrawFlags |= Lb_SPRITE_TRANSPAR4;
@@ -678,7 +676,7 @@ void redraw_isometric_view(void)
     SYNCDBG(6,"Starting");
 
     struct PlayerInfo* player = get_my_player();
-    if (player->acamera == NULL)
+    if (player_invalid(player) || (get_player_active_camera(player) == NULL))
         return;
     TbGraphicsWindow ewnd;
     memset(&ewnd, 0, sizeof(TbGraphicsWindow));

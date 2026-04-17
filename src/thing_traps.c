@@ -586,10 +586,22 @@ void activate_trap_god_spell(struct Thing *traptng, struct Thing *creatng, Power
     magic_use_power_direct(traptng->owner, pwkind, trapst->activation_level, creatng->mappos.x.stl.num, creatng->mappos.y.stl.num, creatng, PwMod_CastForFree);
 }
 
+TbBool activate_trap_lua(struct Thing *traptng, struct Thing *creatng, FuncIdx func_idx)
+{
+    return luafunc_trap_activation_func(func_idx, traptng, creatng);
+}
+
 void activate_trap(struct Thing *traptng, struct Thing *creatng)
 {
-    traptng->trap.revealed = 1;
+
     struct TrapConfigStats *trapst = get_trap_model_stats(traptng->model);
+
+    if (!activate_trap_lua(traptng, creatng, trapst->activation_lua_func_idx))
+    {
+        return;
+    }
+
+    traptng->trap.revealed = 1;
     if (trapst->notify == true)
     {
         event_create_event(traptng->mappos.x.val, traptng->mappos.y.val, EvKind_AlarmTriggered, traptng->owner, 0);
@@ -644,6 +656,7 @@ void activate_trap_by_slap(struct PlayerInfo *player, struct Thing* traptng)
         case TrpAcT_SlabChange:
         case TrpAcT_CreatureSpawn:
         case TrpAcT_Power:
+        case TrpAcT_None:
             activate_trap(traptng, trgtng);
             break;
         default:
@@ -664,8 +677,12 @@ void activate_trap_by_slap(struct PlayerInfo *player, struct Thing* traptng)
             {
             case TrpAcT_HeadforTarget90:
             case TrpAcT_CreatureShot:
-                external_activate_trap_shot_at_angle(traptng, player->acamera->rotation_angle_x, trgtng);
+            {
+                struct Camera* camera = get_player_active_camera(player);
+                if (camera != NULL)
+                    external_activate_trap_shot_at_angle(traptng, camera->rotation_angle_x, trgtng);
                 break;
+            }
             default:
                 ERRORLOG("Illegal trap activation type %d (idx=%d)", (int)trapst->activation_type, traptng->index);
                 break;
@@ -969,7 +986,15 @@ TngUpdateRet update_trap(struct Thing *traptng)
         }
         if (traptng->trap.volley_repeat > 0)
         {
-            thing_fire_shot(traptng, thing_get(traptng->trap.firing_at), trapst->created_itm_model, 1, THit_CrtrsNObjcts);
+            struct Thing* trgtng = thing_get(traptng->trap.firing_at);
+            if (!thing_is_invalid(trgtng))
+            {
+                thing_fire_shot(traptng, trgtng, trapst->created_itm_model, 1, THit_CrtrsNObjcts);
+            }
+            else
+            {
+                trap_fire_shot_without_target(traptng, trapst->created_itm_model, 1, traptng->move_angle_xy);
+            }
             return TUFRet_Modified;
         }
     }
@@ -1273,23 +1298,6 @@ void trap_fire_shot_without_target(struct Thing *firing, ThingModel shot_model, 
             pos1.x.val = firing->mappos.x.val;
             pos1.y.val = firing->mappos.y.val;
             pos1.z.val = firing->mappos.z.val;
-            if (shotst->fire_logic == ShFL_Volley)
-            {
-                if (!firing->trap.volley_fire)
-                {
-                    firing->trap.volley_fire = true;
-                    firing->trap.volley_repeat = shotst->effect_amount - 1; // N x shots + (N - 1) x pauses and one shot is this one
-                    firing->trap.volley_delay = shotst->effect_spacing;
-                    firing->trap.firing_at = 0;
-                }
-                else
-                {
-                    firing->trap.volley_delay = shotst->effect_spacing;
-                    if (firing->trap.volley_repeat == 0)
-                        return;
-                    firing->trap.volley_repeat--;
-                }
-            }
             firing->move_angle_xy = angle_xy; //visually rotates the trap
             pos1.x.val += distance_with_angle_to_coord_x(trapst->shot_shift_x, firing->move_angle_xy + DEGREES_90);
             pos1.y.val += distance_with_angle_to_coord_y(trapst->shot_shift_x, firing->move_angle_xy + DEGREES_90);
@@ -1333,6 +1341,25 @@ void trap_fire_shot_without_target(struct Thing *firing, ThingModel shot_model, 
             shotng->parent_idx = firing->index;
             break;
         }
+        case ShFL_Volley:
+        {
+            
+            if (!firing->trap.volley_fire)
+            {
+                firing->trap.volley_fire = true;
+                firing->trap.volley_repeat = shotst->effect_amount - 1; // N x shots + (N - 1) x pauses and one shot is this one
+                firing->trap.volley_delay = shotst->effect_spacing;
+                firing->trap.firing_at = 0;
+            }
+            else
+            {
+                firing->trap.volley_delay = shotst->effect_spacing;
+                if (firing->trap.volley_repeat == 0)
+                    return;
+                firing->trap.volley_repeat--;
+            }
+        }
+        //fallthrough
         default:
             shotng = create_shot(&firing->mappos, shot_model, firing->owner);
             if (thing_is_invalid(shotng)) {
