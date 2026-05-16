@@ -1514,7 +1514,7 @@ short creature_being_dropped(struct Thing *creatng)
     {
         // Note that the creature should have no self control while dropping - after all, it was in hand moments ago
         SYNCDBG(17,"The %s index %d owner %d dropped at (%d,%d) isn't touching ground yet",thing_model_name(creatng),(int)creatng->index,(int)creatng->owner,(int)stl_x,(int)stl_y);
-        return 1;
+        return CrStRet_Modified;
     }
     set_creature_assigned_job(creatng, Job_NULL);
     // If the creature has flight ability, return it to flying state
@@ -1588,7 +1588,7 @@ short creature_being_dropped(struct Thing *creatng)
                     SYNCDBG(3, "The %s index %d owner %d found digger job at (%d,%d)",thing_model_name(creatng),(int)creatng->index,(int)creatng->owner,(int)stl_x,(int)stl_y);
                     cctrl->creature_control_flags &= ~CCFlg_NoCompControl;
                     delay_heal_sleep(creatng);
-                    return 2;
+                    return CrStRet_ResetOk;
                 }
                 else
                 {
@@ -1599,26 +1599,26 @@ short creature_being_dropped(struct Thing *creatng)
         if (creature_under_spell_effect(creatng, CSAfF_Fear))
         {
             external_set_thing_state(creatng, CrSt_CreatureCombatFlee);
-            return 2;
+            return CrStRet_ResetOk;
         }
         // Do combat, if we can
         if (creature_will_do_combat(creatng))
         {
             if (creature_look_for_combat(creatng)) {
                 SYNCDBG(3,"The %s index %d owner %d found creature combat at (%d,%d)",thing_model_name(creatng),(int)creatng->index,(int)creatng->owner,(int)stl_x,(int)stl_y);
-                return 2;
+                return CrStRet_ResetOk;
             }
             if (creature_look_for_enemy_heart_combat(creatng)) {
                 SYNCDBG(3,"The %s index %d owner %d found heart combat at (%d,%d)",thing_model_name(creatng),(int)creatng->index,(int)creatng->owner,(int)stl_x,(int)stl_y);
-                return 2;
+                return CrStRet_ResetOk;
             }
             if (creature_look_for_enemy_door_combat(creatng)) {
                 SYNCDBG(3,"The %s index %d owner %d found enemy combat at (%d,%d)",thing_model_name(creatng),(int)creatng->index,(int)creatng->owner,(int)stl_x,(int)stl_y);
-                return 2;
+                return CrStRet_ResetOk;
             }
             if (creature_look_for_enemy_object_combat(creatng)) {
                 SYNCDBG(3, "The %s index %d owner %d found enemy combat at (%d,%d)", thing_model_name(creatng), (int)creatng->index, (int)creatng->owner, (int)stl_x, (int)stl_y);
-                return 2;
+                return CrStRet_ResetOk;
             }
         }
         if (new_job != Job_NULL)
@@ -1639,7 +1639,7 @@ short creature_being_dropped(struct Thing *creatng)
         SYNCDBG(3,"No job found at (%d,%d) for %s index %d owner %d",(int)stl_x,(int)stl_y,thing_model_name(creatng),(int)creatng->index,(int)creatng->owner);
         // Job_NULL is already assigned here, and default state is already initialized
         cctrl->creature_control_flags &= ~CCFlg_NoCompControl;
-        return 2;
+        return CrStRet_ResetOk;
     }
     SYNCDBG(3,"Job %s to be assigned to %s index %d owner %d",creature_job_code_name(new_job),thing_model_name(creatng),(int)creatng->index,(int)creatng->owner);
     // Check if specific conditions are met for this job to be assigned
@@ -1647,14 +1647,14 @@ short creature_being_dropped(struct Thing *creatng)
     {
         SYNCDBG(16,"Cannot assign job %s to %s (owner %d)",creature_job_code_name(new_job),thing_model_name(creatng),(int)creatng->owner);
         cctrl->creature_control_flags &= ~CCFlg_NoCompControl;
-        return 2;
+        return CrStRet_ResetOk;
     }
     // Now try sending the creature to do job it should do at this position
     if (!send_creature_to_job_near_position(creatng, stl_x, stl_y, new_job))
     {
         SYNCDBG(13,"Cannot assign %s to %s index %d owner %d; could not send to room",creature_job_code_name(new_job),thing_model_name(creatng),(int)creatng->index,(int)creatng->owner);
         cctrl->creature_control_flags &= ~CCFlg_NoCompControl;
-        return 2;
+        return CrStRet_ResetOk;
     }
     // If applicable, set the job as assigned job for the creature
     if ((get_flags_for_job(new_job) & JoKF_AssignOneTime) == 0) {
@@ -1663,7 +1663,7 @@ short creature_being_dropped(struct Thing *creatng)
         // One-time jobs are not assigned to the creature, they are just initialized to be performed once
         //set_creature_assigned_job(creatng, Job_NULL); -- already assigned
     }
-    return 2;
+    return CrStRet_ResetOk;
 }
 
 short creature_cannot_find_anything_to_do(struct Thing *creatng)
@@ -4191,10 +4191,16 @@ TbBool creature_job_in_room_no_longer_possible_f(const struct Room *room, Creatu
     RoomRole rrole = get_room_role_for_job(jobpref);
     if (!room_exists(room))
     {
-        SYNCLOG("%s: The %s(%d) owned by player %d can no longer work in %s because former work room doesn't exist",
-            func_name,thing_model_name(thing),thing->index,(int)thing->owner,room_role_code_name(rrole));
-        // Note that if given room doesn't exist, it do not mean this
-        return true;
+        struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
+        //Sometimes they accidentally step off. Catch this.
+        room = get_room_at_pos(&cctrl->moveto_pos);
+        if (room_is_invalid(room))
+        {
+            SYNCLOG("%s: The %s(%d) owned by player %d can no longer work in %s because former work room doesn't exist",
+                func_name, thing_model_name(thing), thing->index, (int)thing->owner, room_role_code_name(rrole));
+            // Note that if given room doesn't exist, it do not mean this
+            return true;
+        }
     }
     if (!room_still_valid_as_type_for_thing(room, rrole, thing))
     {
@@ -5576,8 +5582,6 @@ TbBool setup_move_off_lava(struct Thing* thing)
     return false;
 }
 
-//todo CAVE_IN_NEAR_FLEE_POSITION into config file
-#define CAVE_IN_NEAR_FLEE_POSITION 200
 TbBool setup_move_out_of_cave_in(struct Thing* thing)
 {
     MapSlabCoord bx = 0;
@@ -5603,14 +5607,17 @@ TbBool setup_move_out_of_cave_in(struct Thing* thing)
     }
     if (valid_flee_pos) // If a flee position is found, go there.
     {
-        long dist = LbDiagonalLength(abs(thing->mappos.x.val - cctrl->flee_pos.x.val), abs(thing->mappos.y.val - cctrl->flee_pos.y.val));
-        // If you're too close to the flee position, no point in going there to escape cave in damage.
-        if (dist <= CAVE_IN_NEAR_FLEE_POSITION)
+        // If you're too close to the flee position, no point in going there to escape cave in damage. Creatures will not go to flee pos when they within slab_coord(2), so we use slab_coord(3) here.
+        if (get_chessboard_distance(&thing->mappos, &cctrl->flee_pos) <= slab_coord(3))
         {
             // Heroes that are near to a hero gate, should escape through it if they can.
             if (is_hero_thing(thing))
             {
                 if (good_leave_through_exit_door(thing))
+                {
+                    return true;
+                }
+                if (good_setup_wander_to_exit(thing))
                 {
                     return true;
                 }
@@ -5632,8 +5639,9 @@ TbBool setup_move_out_of_cave_in(struct Thing* thing)
         }
         else
         {
-            if (setup_person_move_to_coord(thing, &cctrl->flee_pos, 0))
+            if (external_set_thing_state(thing, CrSt_CreatureCombatFlee))
             {
+                cctrl->flee_start_turn = get_gameturn();
                 return true;
             }
         }

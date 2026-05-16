@@ -5,7 +5,7 @@
 ---@class Thing
 ---@field ThingIndex integer
 ---@field creation_turn integer
----@field class string
+---@field thing_class string
 ---@field model string
 ---@field anim_sprite string AnimationID or Custom sprite name
 ---@field anim_speed integer
@@ -27,6 +27,9 @@ if not Thing then Thing = {} end
 
 ---@class Object: Thing
 if not Object then Object = {} end
+
+---@class Corpse: Thing
+if not Corpse then Corpse = {} end
 
 ---Destroys the object, triggers onObjectDestroyed if applicable.
 function Object:destroy() end

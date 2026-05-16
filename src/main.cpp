@@ -34,7 +34,7 @@
 #include "bflib_mouse.h"
 #include "bflib_mshandler.hpp"
 #include "bflib_filelst.h"
-#include "bflib_network.h"
+#include "net_lobby.h"
 #include "net_resync.h"
 #include "bflib_planar.h"
 
@@ -121,7 +121,6 @@
 #include "ariadne.h"
 #include "sounds.h"
 #include "vidfade.h"
-#include "KeeperSpeech.h"
 #include "config_settings.h"
 #include "config_keeperfx.h"
 #include "game_legacy.h"
@@ -148,11 +147,11 @@ short default_loc_player = 0;
 struct StartupParameters start_params;
 char autostart_multiplayer_campaign[80] = "";
 int autostart_multiplayer_level = 0;
-int32_t game_num_fps;
+int32_t turns_per_second;
 
-int32_t game_num_fps_draw_current = 0;
-int32_t game_num_fps_draw_main = 0; // -1 if auto
-int32_t game_num_fps_draw_secondary = 0;
+int32_t turns_per_second_draw_current = 0;
+int32_t turns_per_second_draw_main = 0; // -1 if auto
+int32_t turns_per_second_draw_secondary = 0;
 
 
 unsigned char *blue_palette;
@@ -251,6 +250,7 @@ TbBool should_use_delta_time_on_menu()
         case FeSt_LEVEL_SELECT:
         case FeSt_CAMPAIGN_SELECT:
         case FeSt_MAPPACK_SELECT:
+        case FeSt_MP_MAPPACK_SELECT:
         case FeSt_LAND_VIEW:
         case FeSt_NETLAND_VIEW:
         case FeSt_TORTURE:
@@ -567,10 +567,7 @@ long process_boulder_collision(struct Thing *boulder, struct Coord3d *pos, int d
         if (subtile_has_door_thing_on(stl_x, stl_y)) // Collide with Doors
         {
             struct Thing *doortng = get_door_for_position(stl_x, stl_y);
-            HitPoints door_health = doortng->health;
-            doortng->health -= boulder->health; // decrease door health
-            boulder->health -= door_health; // decrease boulder health
-            if (doortng->health <= 0)
+            if (collide_door_and_boulder(doortng, boulder) <= 0)
             {
                 return 2; // door destroyed
             }
@@ -1172,19 +1169,6 @@ short setup_game(void)
       setup_stuff();
   }
 
-  if (result == 1)
-  {
-      KEEPERSPEECH_REASON reason = KeeperSpeechInit();
-      if (reason == KSR_NO_LIB_INSTALLED) {
-          SYNCLOG("Speech recognition disabled: %s",
-              KeeperSpeechErrorMessage(reason));
-      } else
-      if (reason != KSR_OK) {
-          ERRORLOG("Failed to initialize Speech recognition module: %s",
-              KeeperSpeechErrorMessage(reason));
-      }
-  }
-
   return result;
 }
 
@@ -1371,7 +1355,7 @@ void toggle_hero_health_flowers(void)
       do_sound_menu_click();
       statstr = "on";
     }
-    show_onscreen_msg(2*game_num_fps, "Hero health flowers %s", statstr);
+    show_onscreen_msg(2*turns_per_second, "Hero health flowers %s", statstr);
 }
 
 void reset_gui_based_on_player_mode(void)
@@ -1908,15 +1892,12 @@ void level_lost_go_first_person(PlayerNumber plyr_idx)
     SYNCDBG(8,"Finished");
 }
 
-void set_general_information(long msg_id, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
+void set_general_information(long msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
 {
-    struct PlayerInfo *player;
-    long pos_x;
-    long pos_y;
-    player = get_my_player();
-    find_map_location_coords(target, &x, &y, my_player_number, __func__);
-    pos_x = 0;
-    pos_y = 0;
+    struct PlayerInfo *player = get_player(plyr_idx);
+    long pos_x = 0;
+    long pos_y = 0;
+    find_map_location_coords(target, &x, &y, plyr_idx, __func__);
     if ((x != 0) || (y != 0))
     {
         pos_y = subtile_coord_center(y);
@@ -1925,15 +1906,12 @@ void set_general_information(long msg_id, TbMapLocation target, MapSubtlCoord x,
     event_create_event(pos_x, pos_y, EvKind_Information, player->id_number, -msg_id);
 }
 
-void set_quick_information(long msg_id, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
+void set_quick_information(long msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
 {
-    struct PlayerInfo *player;
-    long pos_x;
-    long pos_y;
-    player = get_my_player();
-    find_map_location_coords(target, &x, &y, my_player_number, __func__);
-    pos_x = 0;
-    pos_y = 0;
+    struct PlayerInfo *player = get_player(plyr_idx);
+    long pos_x = 0;
+    long pos_y = 0;
+    find_map_location_coords(target, &x, &y, plyr_idx, __func__);
     if ((x != 0) || (y != 0))
     {
         pos_y = subtile_coord_center(y);
@@ -1942,22 +1920,17 @@ void set_quick_information(long msg_id, TbMapLocation target, MapSubtlCoord x, M
     event_create_event(pos_x, pos_y, EvKind_QuickInformation, player->id_number, -msg_id);
 }
 
-void set_general_objective(long msg_id, TbMapLocation target, long x, long y)
+void set_general_objective(long msg_id, PlayerNumber plyr_idx, TbMapLocation target, long x, long y)
 {
-    process_objective(get_string(msg_id), target, x, y);
+    process_objective(get_string(msg_id), plyr_idx, target, x, y);
 }
 
-void process_objective(const char *msg_text, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
+void process_objective(const char *msg_text, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
 {
-    struct PlayerInfo *player;
-    MapSubtlCoord pos_x;
-    MapSubtlCoord pos_y;
-    player = get_my_player();
-    find_map_location_coords(target, &x, &y, my_player_number, __func__);
-    pos_y = y;
-    pos_x = x;
-    set_level_objective(msg_text);
-    display_objectives(player->id_number, pos_x, pos_y);
+    struct PlayerInfo *player = get_player(plyr_idx);
+    find_map_location_coords(target, &x, &y, plyr_idx, __func__);
+    set_level_objective(player->id_number, msg_text);
+    display_objectives(player->id_number, x, y);
 }
 
 short winning_player_quitting(struct PlayerInfo *player, int32_t *plyr_count)
@@ -3273,7 +3246,7 @@ TbBool keeper_wait_for_next_turn(void)
     if (game.frame_skip >= 0)
     {
         // Standard delaying system
-        long num_fps = game_num_fps;
+        long num_fps = turns_per_second;
         if (game.frame_skip > 0)
             num_fps *= game.frame_skip;
 
@@ -3304,10 +3277,10 @@ TbBool keeper_wait_for_next_turn(void)
 TbBool keeper_wait_for_next_draw(void)
 {
     // fps.draw is currently unable to work properly with frame_skip
-    if (game_num_fps_draw_current > 0 && is_feature_on(Ft_DeltaTime) == true && game.frame_skip == 0)
+    if (turns_per_second_draw_current > 0 && is_feature_on(Ft_DeltaTime) == true && game.frame_skip == 0)
     {
         const long double tick_ns_one_sec = 1000000000.0;
-        const long double tick_ns_one_frame = tick_ns_one_sec/game_num_fps_draw_current;
+        const long double tick_ns_one_frame = tick_ns_one_sec/turns_per_second_draw_current;
 
         static long double tick_ns_last_draw = 0;
         long double tick_ns_cur = get_time_tick_ns();
@@ -3329,31 +3302,31 @@ TbBool keeper_wait_for_next_draw(void)
 
 void redetect_screen_refresh_rate_for_draw()
 {
-    game_num_fps_draw_current = 0;
+    turns_per_second_draw_current = 0;
 
-    if (game_num_fps_draw_main == -1) {
-        if (game_num_fps_draw_secondary > 0)
-            game_num_fps_draw_current = game_num_fps_draw_secondary;
+    if (turns_per_second_draw_main == -1) {
+        if (turns_per_second_draw_secondary > 0)
+            turns_per_second_draw_current = turns_per_second_draw_secondary;
 
         if (lbWindow != NULL) {
             int display_index = SDL_GetWindowDisplayIndex(lbWindow);
             if (display_index >= 0) {
                 SDL_DisplayMode mode;
                 if (SDL_GetCurrentDisplayMode(display_index, &mode) == 0 && mode.refresh_rate > 0) {
-                    game_num_fps_draw_current = mode.refresh_rate;
+                    turns_per_second_draw_current = mode.refresh_rate;
                 }
             }
         }
 
-    } else if (game_num_fps_draw_main > 0) {
-        game_num_fps_draw_current = game_num_fps_draw_main;
+    } else if (turns_per_second_draw_main > 0) {
+        turns_per_second_draw_current = turns_per_second_draw_main;
     }
 }
 
 TbBool keeper_wait_for_screen_focus(void)
 {
     do {
-        if ( !LbWindowsControl() )
+        if ( !poll_inputs() )
         {
           force_application_close();
           break;
@@ -3415,7 +3388,7 @@ void gameplay_loop_logic()
     }
 #endif // FUNCTESTING
     do_draw = display_should_be_updated_this_turn() || (!LbIsActive());
-    LbWindowsControl();
+    poll_inputs();
     input_eastegg();
     input();
     update();
@@ -3485,7 +3458,7 @@ extern "C" void network_yield_draw_frontend()
         fronttorture_update();
     }
     if (frontend_menu_state == FeSt_NET_START) {
-        LbWindowsControl();
+        poll_inputs();
         frontnet_start_input();
     }
     frontend_draw();
@@ -3512,7 +3485,7 @@ void gameplay_loop_timestep()
         exit_keeper = 1;
     }
 
-    if (game_num_fps_draw_current > 0 && is_feature_on(Ft_DeltaTime) == true) {
+    if (turns_per_second_draw_current > 0 && is_feature_on(Ft_DeltaTime) == true) {
         keeper_wait_for_next_draw();
 
         if (game.turns_packetoff == get_gameturn()) {
@@ -3533,7 +3506,6 @@ void keeper_gameplay_loop(void)
         initialise_eye_lenses();
     }
     SYNCDBG(0,"Entering the gameplay loop for level %d",(int)get_loaded_level_number());
-    KeeperSpeechClearEvents();
     LbErrorParachuteUpdate(); // For some reasone parachute keeps changing; Remove when won't be needed anymore
 
     initial_time_point();
@@ -3662,16 +3634,20 @@ static TbBool wait_at_frontend(void)
     }
     game.save_game_slot = -1;
     // Make sure campaigns are loaded
-    if (!load_campaigns_list())
+    if (!load_campaigns_list(&campaigns_list ,FGrp_Campgn ,"campaigns","campgn_order.txt"))
     {
       ERRORLOG("No valid campaign files found");
       exit_keeper = 1;
       return true;
     }
     // Make sure mappacks are loaded
-    if (!load_mappacks_list())
+    if (!load_campaigns_list(&mappacks_list,FGrp_VarLevels,"mappacks","mappck_order.txt"))
     {
       WARNMSG("No valid mappack files found");
+    }
+    if (!load_campaigns_list(&mp_mappacks_list,FGrp_MpLevels,"multiplayer mappacks","mp_mappck_order.txt"))
+    {
+      WARNMSG("No valid multiplayer mappack files found");
     }
     //Set level number and campaign (for single level mode: GOF_SingleLevel)
     if ((start_params.operation_flags & GOF_SingleLevel) != 0)
@@ -3680,10 +3656,10 @@ static TbBool wait_at_frontend(void)
         if (start_params.selected_campaign[0] != '\0')
         {
             str_append(start_params.selected_campaign, sizeof(start_params.selected_campaign), ".cfg");
-            result = change_campaign(start_params.selected_campaign);
+            result = change_campaign(CampgnT_Default, start_params.selected_campaign);
         }
         if (!result) {
-            if (!change_campaign("")) {
+            if (!change_campaign(CampgnT_Default,"")) {
                 WARNMSG("Unable to load default campaign for the specified level CMD Line parameter");
             }
             else if (start_params.selected_campaign[0] != '\0') { // only show this log message if the user actually specified a campaign
@@ -3760,7 +3736,7 @@ static TbBool wait_at_frontend(void)
     frontend_set_state(get_startup_menu_state());
     try_restore_frontend_error_box();
 
-    LbWindowsControl();
+    poll_inputs();
     clear_mouse_pressed_lrbutton();
 
     short finish_menu = 0;
@@ -3770,7 +3746,7 @@ static TbBool wait_at_frontend(void)
     long fe_last_loop_time = LbTimerClock();
     do
     {
-      if (!LbWindowsControl())
+      if (!poll_inputs())
       {
         force_application_close();
         SYNCDBG(0,"Windows Control exit condition invoked");
@@ -3815,8 +3791,10 @@ static TbBool wait_at_frontend(void)
         if (is_feature_on(Ft_DeltaTime) == true && should_use_delta_time_on_menu()) {
           game.delta_time = get_delta_time();
         } else {
+          int32_t frame_time;
+          frame_time = max(1, 1000 / turns_per_second);
           game.delta_time = 1;
-          LbSleepUntil(fe_last_loop_time + 30);
+          LbSleepUntil(fe_last_loop_time + frame_time);
         }
       }
       fe_last_loop_time = LbTimerClock();
@@ -3995,8 +3973,6 @@ short reset_game(void)
 {
     SYNCDBG(6,"Starting");
 
-    KeeperSpeechExit();
-
     LbMouseSuspend();
     LbIKeyboardClose();
     LbScreenReset(false);
@@ -4172,6 +4148,10 @@ short process_command_line(unsigned short argc, char *argv[])
       if (strcasecmp(parstr, "mplog") == 0)
       {
           detailed_multiplayer_logging = true;
+      } else
+      if (strcasecmp(parstr, "netstats") == 0)
+      {
+          debug_display_network_stats = 1;
       } else
       if (strcasecmp(parstr, "compuchat") == 0)
       {
@@ -4435,8 +4415,8 @@ int LbBullfrogMain(unsigned short argc, char *argv[])
         SYNCDBG(0,"finished properly");
     }
 
-    LbErrorLogClose();
     steam_api_shutdown();
+    LbErrorLogClose();
     return 0;
 }
 

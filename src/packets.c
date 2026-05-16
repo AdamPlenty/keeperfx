@@ -18,7 +18,6 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "packets.h"
-#include "net_received_packets.h"
 #include "net_input_lag.h"
 #include "net_checksums.h"
 
@@ -34,9 +33,10 @@
 #include "bflib_vidraw.h"
 #include "bflib_fileio.h"
 #include "bflib_dernc.h"
-#include "bflib_network.h"
-#include "bflib_network_internal.h"
-#include "bflib_network_exchange.h"
+#include "net_main.h"
+#include "net_lobby.h"
+#include "net_exchange_common.h"
+#include "net_exchange_gameplay.h"
 #include "bflib_sound.h"
 #include "bflib_sndlib.h"
 #include "bflib_sprfnt.h"
@@ -51,11 +51,11 @@
 #include "frontmenu_net.h"
 #include "frontend.h"
 #include "vidmode.h"
+#include "config.h"
 #include "config_creature.h"
 #include "config_crtrmodel.h"
 #include "config_effects.h"
 #include "config_terrain.h"
-#include "config_players.h"
 #include "config_settings.h"
 #include "config_keeperfx.h"
 #include "player_instances.h"
@@ -117,10 +117,14 @@ extern "C" {
 /******************************************************************************/
 extern TbBool process_players_global_cheats_packet_action(PlayerNumber plyr_idx, struct Packet* pckt);
 extern TbBool process_players_dungeon_control_cheats_packet_action(PlayerNumber plyr_idx, struct Packet* pckt);
-extern TbBool change_campaign(const char *cmpgn_fname);
 /******************************************************************************/
 TbBool unpausing_in_progress = 0;
+float camera_movement_x = 0.0f;
+float camera_movement_y = 0.0f;
 /******************************************************************************/
+#define RESYNC_LIMIT_BEFORE_COOLDOWN 5
+#define RESYNC_COOLDOWN_MS (5 * 60 * 1000)
+
 void set_packet_action(struct Packet *pckt, unsigned char pcktype, long par1, long par2, unsigned short par3, unsigned short par4)
 {
     pckt->actn_par1 = par1;
@@ -196,7 +200,7 @@ TbBool process_dungeon_control_packet_spell_overcharge(long plyr_idx)
     SYNCDBG(6,"Starting for player %d state %s",(int)plyr_idx,player_state_code_name(player->work_state));
     struct Packet* pckt = get_packet_direct(player->packet_num);
 
-    while (game.conf.rules[plyr_idx].magic.allow_instant_charge_up && is_game_key_pressed(Gkey_SpeedMod, NULL, true))
+    while (game.conf.rules[plyr_idx].magic.allow_instant_charge_up && is_game_key_pressed(Gkey_SpeedMod, false, true))
     {
         struct PowerConfigStats *powerst = get_power_model_stats(player->chosen_power_kind);
 
@@ -245,6 +249,40 @@ TbBool process_dungeon_control_packet_spell_overcharge(long plyr_idx)
         return false;
     }
     return false;
+}
+
+static TbBool resync_game_allowed(void)
+{
+    static int32_t resync_attempt_count = 0;
+    static TbClockMSec resync_cooldown_end = 0;
+    static GameTurn resync_last_turn = 0;
+    static TbBool resync_cooldown_warned = false;
+    TbClockMSec now = LbTimerClock();
+    GameTurn turn = get_gameturn();
+
+    if (turn < resync_last_turn) {
+        resync_attempt_count = 0;
+        resync_cooldown_end = 0;
+        resync_cooldown_warned = false;
+    }
+    resync_last_turn = turn;
+
+    if (resync_attempt_count >= RESYNC_LIMIT_BEFORE_COOLDOWN) {
+        if ((int32_t)(now - resync_cooldown_end) < 0) {
+            if (!resync_cooldown_warned) {
+                show_onscreen_msg(10 * turns_per_second, "Game may be in a desynced state.");
+                resync_cooldown_warned = true;
+            }
+            return false;
+        }
+    }
+
+    if (resync_attempt_count < RESYNC_LIMIT_BEFORE_COOLDOWN) {
+        resync_attempt_count++;
+    }
+    resync_cooldown_end = now + RESYNC_COOLDOWN_MS;
+    resync_cooldown_warned = false;
+    return true;
 }
 
 TbBool player_sell_room_at_subtile(long plyr_idx, long stl_x, long stl_y)
@@ -373,23 +411,20 @@ void process_camera_controls(struct Camera* cam, struct Packet* pckt, struct Pla
       inter_val *= 3;
 
     if (is_local_camera && !game.packet_load_enable)
-    {
-        movement_accum_x = clamp(movement_accum_x, -1.0f, 1.0f);
-        movement_accum_y = clamp(movement_accum_y, -1.0f, 1.0f);
-        
+    {        
         // Apply same scaling as packet-based movement for consistency
-        if (movement_accum_y != 0.0f) {
-            long delta = (long)(movement_accum_y * inter_val / 4.0f);
-            long limit = (long)(movement_accum_y * inter_val);
+        if (camera_movement_y != 0.0f) {
+            long delta = (long)(camera_movement_y * inter_val / 4.0f);
+            long limit = (long)(camera_movement_y * inter_val);
             view_set_camera_y_inertia(cam, delta, limit);
         }
-        if (movement_accum_x != 0.0f) {
-            long delta = (long)(movement_accum_x * inter_val / 4.0f);
-            long limit = (long)(movement_accum_x * inter_val);
+        if (camera_movement_x != 0.0f) {
+            long delta = (long)(camera_movement_x * inter_val / 4.0f);
+            long limit = (long)(camera_movement_x * inter_val);
             view_set_camera_x_inertia(cam, delta, limit);
         }
-        movement_accum_x = 0.0f;
-        movement_accum_y = 0.0f;
+        camera_movement_x = 0.0f;
+        camera_movement_y = 0.0f;
     }
     else
     {
@@ -569,7 +604,7 @@ void process_chat_message_end(int player_id, const char *message)
     if (message[0] != '\0') {
         memcpy(player->mp_message_text, message, PLAYER_MP_MESSAGE_LEN);
         memcpy(player->mp_message_text_last, message, PLAYER_MP_MESSAGE_LEN);
-        if (frontend_menu_state == FeSt_NET_START) {
+        if (frontend_menu_state == FeSt_NET_START || frontend_menu_state == FeSt_MP_MAPPACK_SELECT) {
             if (!try_starting_level_from_chat(player->mp_message_text, player_id)) {
                 add_message(player_id, player->mp_message_text);
             }
@@ -1630,7 +1665,7 @@ static void replace_disconnected_players_with_ai(void) {
         return;
     }
     TbBool host_disconnected = (netstate.my_id != SERVER_ID && netstate.users[SERVER_ID].progress == USER_UNUSED);
-    for (int player_index = 0; player_index < NET_PLAYERS_COUNT; player_index++) {
+    for (int player_index = 0; player_index < MAX_NET_USERS; player_index++) {
         struct PlayerInfo* player = get_player(player_index);
         if (!player_exists(player) || ((player->allocflags & PlaF_CompCtrl) != 0)) {
             continue;
@@ -1789,8 +1824,10 @@ void process_packets(void)
     if (((game.system_flags & GSF_NetworkActive) != 0)
      && ((game.system_flags & (GSF_NetGameNoSync | GSF_NetSeedNoSync)) != 0))
     {
-        SYNCDBG(0,"Resyncing");
-        resync_game();
+        if (resync_game_allowed()) {
+            SYNCDBG(0,"Resyncing");
+            resync_game();
+        }
     }
     get_current_slowdown_percentage();
     MULTIPLAYER_LOG("process_packets: === END turn=%lu ===", (unsigned long)get_gameturn());
@@ -1813,118 +1850,45 @@ TbBool try_starting_level_from_chat(char* message, long player_id)
     }
 
     char *level_str = separator_pos + 1;
-    if (!isdigit(level_str[0])) {
+    while (*level_str == ' ') {
+        level_str++;
+    }
+    if (level_str[0] != '_' && !isdigit(level_str[0])) {
         return false;
     }
-
-    LevelNumber level_num = atoi(level_str);
-    if (level_num <= 0) {
-        return false;
+    
+    LevelNumber level_num;
+    if (level_str[0] == '_') {
+        level_num = -1;
+    } else {
+        level_num = atoi(level_str);
+        if (level_num <= 0) {
+            return false;
+        }
     }
 
     char campaign_filename[80];
-    snprintf(campaign_filename, sizeof(campaign_filename), "%.*s.cfg", campaign_len, message);
+    if ((campaign_len >= 4) && (strncasecmp(message + campaign_len - 4, ".cfg", 4) == 0)) {
+        snprintf(campaign_filename, sizeof(campaign_filename), "%.*s", campaign_len, message);
+    } else {
+        snprintf(campaign_filename, sizeof(campaign_filename), "%.*s.cfg", campaign_len, message);
+    }
 
-    if (!change_campaign(campaign_filename)) {
+    if (!change_campaign(CampgnT_Default, campaign_filename)
+     || (strcasecmp(campaign.fname, campaign_filename) != 0)) {
         ERRORLOG("Unable to load campaign '%.*s' for level %d", campaign_len, message, (int)level_num);
         return false;
     }
-
-    set_selected_level_number(level_num);
-    frontend_set_state(FeSt_START_MPLEVEL);
-    return true;
-}
-
-void process_frontend_packets(void)
-{
-  long i;
-  for (i=0; i < NET_PLAYERS_COUNT; i++)
-  {
-    net_screen_packet[i].networkstatus_flags &= ~0x01;
-  }
-  struct ScreenPacket* nspckt = &net_screen_packet[my_player_number];
-  set_flag(nspckt->networkstatus_flags, 0x01);
-  nspckt->frontend_alliances = frontend_alliances;
-  set_flag(nspckt->networkstatus_flags, 0x01);
-  nspckt->networkstatus_flags ^= ((nspckt->networkstatus_flags ^ (fe_computer_players << 1)) & 0x06);
-  nspckt->stored_data1 = VersionRelease;
-  nspckt->stored_data2 = VersionBuild;
-  if (LbNetwork_Exchange(NETMSG_FRONTEND, nspckt, &net_screen_packet, sizeof(struct ScreenPacket)))
-  {
-      ERRORLOG("LbNetwork_Exchange failed");
-      net_service_index_selected = -1;
-  }
-  if (netstate.my_id != SERVER_ID && netstate.users[SERVER_ID].progress == USER_UNUSED) {
-    LbNetwork_Stop();
-    if (!setup_network_service(net_service_index_selected)) {
-      frontend_set_state(FeSt_MAIN_MENU);
-    }
-    return;
-  }
-#if DEBUG_NETWORK_PACKETS
-  write_debug_screenpackets();
-#endif
-  for (i=0; i < NET_PLAYERS_COUNT; i++)
-  {
-    nspckt = &net_screen_packet[i];
-    struct PlayerInfo* player = get_player(i);
-    if ((nspckt->networkstatus_flags & 0x01) != 0)
-    {
-        switch (nspckt->networkstatus_flags >> 3)
-        {
-        case 3:
-            if (!validate_versions())
-            {
-                nspckt->param1 = VersionMajor;
-                nspckt->param2 = VersionMinor;
-                versions_different_error();
-                break;
-            }
-            fe_network_active = 1;
-            if (game_flags2 & GF2_Connect)
-            {
-                frontend_set_state(FeSt_START_MPLEVEL);
-            }
-            else
-            {
-                frontend_set_state(FeSt_NETLAND_VIEW);
-            }
-            break;
-        case 4:
-            frontend_set_alliance(nspckt->param1, nspckt->param2);
-            break;
-        case 7:
-            fe_computer_players = nspckt->param1;
-            break;
-        default:
-            break;
+    
+    if (level_num != -1) {
+        if (!is_campaign_level(level_num) && !is_freeplay_level(level_num)) {
+            return false;
         }
-      if (frontend_alliances == -1)
-      {
-        if (nspckt->frontend_alliances != -1)
-          frontend_alliances = nspckt->frontend_alliances;
-      }
-      if (fe_computer_players == 2)
-      {
-        long k = ((nspckt->networkstatus_flags & 0x06) >> 1);
-        if (k != 2)
-          fe_computer_players = k;
-      }
-      player->game_version = nspckt->stored_data2 + (nspckt->stored_data1 << 8);
+        set_selected_level_number(level_num);
+        frontend_set_state(FeSt_START_MPLEVEL);
     }
-    nspckt->networkstatus_flags &= 0x07;
-  }
-  if (frontend_alliances == -1)
-    frontend_alliances = 0;
-  for (i=0; i < NET_PLAYERS_COUNT; i++)
-  {
-    nspckt = &net_screen_packet[i];
-    if ((nspckt->networkstatus_flags & 0x01) == 0)
-    {
-      if (frontend_is_player_allied(my_player_number, i))
-        frontend_set_alliance(my_player_number, i);
-    }
-  }
+
+    return true;
 }
 
 // Using Alt-F4, or similar operating system close requests

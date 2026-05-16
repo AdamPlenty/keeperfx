@@ -530,7 +530,10 @@ static int lua_Display_objective(lua_State *L)
     long msg_id    = luaL_checkinteger(L, 1);
     TbMapLocation zoom_location = luaL_optLocation(L,2);
 
-    set_general_objective(msg_id,zoom_location,0,0);
+    for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
+    {
+        set_general_objective(msg_id, plyr_idx, zoom_location, 0, 0);
+    }
     return 0;
 }
 
@@ -540,7 +543,11 @@ static int lua_Display_objective_with_pos(lua_State *L)
     long stl_x    = luaL_checkstl_x(L, 2);
     long stl_y    = luaL_checkstl_y(L, 3);
 
-    set_general_objective(msg_id,0,stl_x,stl_y);
+
+    for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
+    {
+        set_general_objective(msg_id, plyr_idx, 0, stl_x, stl_y);
+    }
     return 0;
 }
 
@@ -549,7 +556,10 @@ static int lua_Display_information(lua_State *L)
     long msg_id    = luaL_checkinteger(L, 1);
     TbMapLocation zoom_location = luaL_optLocation(L,2);
 
-    set_general_information(msg_id,zoom_location,0,0);
+    for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
+    {
+        set_general_information(msg_id, plyr_idx, zoom_location, 0, 0);
+    }
     return 0;
 }
 
@@ -559,7 +569,10 @@ static int lua_Display_information_with_pos(lua_State *L)
     long stl_x    = luaL_checkstl_x(L, 2);
     long stl_y    = luaL_checkstl_y(L, 3);
 
-    set_general_objective(msg_id,0,stl_x,stl_y);
+    for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
+    {
+        set_general_information(msg_id, plyr_idx, 0, stl_x, stl_y);
+    }
     return 0;
 }
 
@@ -568,7 +581,10 @@ static int lua_Quick_objective(lua_State *L)
     const char *msg_text = lua_tostring(L, 1);
     TbMapLocation target = luaL_optLocation(L, 2);
 
-    process_objective(msg_text, target, 0, 0);
+    for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
+    {
+        process_objective(msg_text, plyr_idx, target, 0, 0);
+    }
     return 0;
 }
 
@@ -579,7 +595,10 @@ static int lua_Quick_information(lua_State *L)
     TbMapLocation target = luaL_optLocation(L, 3);
     snprintf(game.quick_messages[slot], MESSAGE_TEXT_LEN, "%s", msg_text);
 
-    set_quick_information(slot, target, 0, 0);
+    for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
+    {
+        set_quick_information(slot, plyr_idx, target, 0, 0);
+    }
     return 0;
 }
 
@@ -589,7 +608,10 @@ static int lua_Quick_objective_with_pos(lua_State *L)
     MapSubtlCoord stl_x = luaL_checkstl_x(L, 2);
     MapSubtlCoord stl_y = luaL_checkstl_y(L, 3);
 
-    process_objective(msg_text, 0, stl_x, stl_y);
+    for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
+    {
+        process_objective(msg_text, plyr_idx, 0, stl_x, stl_y);
+    }
     return 0;
 }
 
@@ -601,7 +623,10 @@ static int lua_Quick_information_with_pos(lua_State *L)
     MapSubtlCoord stl_y = luaL_checkstl_y(L, 4);
     snprintf(game.quick_messages[slot], MESSAGE_TEXT_LEN, "%s", msg_text);
 
-    set_quick_information(slot, 0, stl_x, stl_y);
+    for (PlayerNumber plyr_idx = 0; plyr_idx < PLAYERS_COUNT; plyr_idx++)
+    {
+        set_quick_information(slot, plyr_idx, 0, stl_x, stl_y);
+    }
     return 0;
 }
 
@@ -883,6 +908,30 @@ static int lua_Add_object_to_level_at_pos(lua_State *L)
     return 1;
 }
 
+static int lua_Add_corpse_to_level(lua_State* L)
+{
+    ThingModel crtr_id = luaL_checkNamedCommand(L, 1, creature_desc);
+    TbMapLocation location = luaL_checkLocation(L, 2);
+    CrtrExpLevel crtr_level = lua_tointeger(L, 3);
+    TbBool dying = lua_toboolean(L, 4);
+    PlayerNumber plr_idx = luaL_optPlayerSingle(L, 5);
+
+    struct Coord3d pos;
+    if (!get_coords_at_location(&pos, location, true))
+    {
+        return 0;
+    }
+
+    if ((crtr_level < 1) || (crtr_level > CREATURE_MAX_LEVEL))
+    {
+        SCRPTERRLOG("Invalid CREATURE LEVEL parameter");
+        return 0;
+    }
+
+    lua_pushThing(L, script_process_new_corpse(crtr_id, pos.x.stl.num, pos.y.stl.num, plr_idx, crtr_level-1, dying));
+    return 1;
+}
+
 static int lua_Add_effect_generator_to_level(lua_State *L)
 {
     ThingModel gen_id      = luaL_checkNamedCommand(L,1,effectgen_desc);
@@ -1003,6 +1052,33 @@ static void set_configuration(lua_State *L, const struct NamedFieldSet* named_fi
     }
 }
 
+static int lua_New_creature_type(lua_State* L)
+{
+    const char* creature_name = luaL_checkstring(L, 1);
+
+    if (game.conf.crtr_conf.model_count >= CREATURE_TYPES_MAX)
+    {
+        SCRPTERRLOG("Cannot increase creature type count for creature type '%s', already at maximum %d types.", creature_name, CREATURE_TYPES_MAX);
+        return 0;
+    }
+
+    int i = game.conf.crtr_conf.model_count;
+    game.conf.crtr_conf.model_count++;
+    snprintf(game.conf.crtr_conf.model[i].name, COMMAND_WORD_LEN, "%s", creature_name);
+    creature_desc[i - 1].name = game.conf.crtr_conf.model[i].name;
+    creature_desc[i - 1].num = i;
+
+    if (load_default_creaturemodel_config(i, 0))
+    {
+        SCRPTLOG("Adding creature type %s and increasing creature types to %d", creature_code_name(i), game.conf.crtr_conf.model_count - 1);
+    }
+    else
+    {
+        SCRPTERRLOG("Failed to load config for creature '%s'(%d).", game.conf.crtr_conf.model[i].name, i);
+    }
+    return 0;
+}
+
 static int lua_Set_door_configuration(lua_State *L)
 {
     set_configuration(L, &trapdoor_door_named_fields_set, "SET_DOOR_CONFIGURATION");
@@ -1073,12 +1149,12 @@ static int lua_Set_sacrifice_recipe(lua_State *L)
 {
 
     int command = luaL_checkNamedCommand(L,1,rules_sacrifices_commands);
-    const char * reward_str = luaL_checkstring(L,1);
+    const char * reward_str = luaL_checkstring(L,2);
     int reward =  0;
     ThingModel victims[MAX_SACRIFICE_VICTIMS];
     for (int i = 0; i < MAX_SACRIFICE_VICTIMS; i++)
     {
-        ThingModel crtr_model  = luaL_optNamedCommand(L,i + 1,creature_desc);
+        ThingModel crtr_model  = luaL_optNamedCommand(L,i + 3,creature_desc);
         victims[i] = crtr_model;
     }
 
@@ -2224,6 +2300,7 @@ static const luaL_Reg global_methods[] = {
    {"AddObjectToLevel"                    ,lua_Add_object_to_level             },
    {"AddObjectToLevelAtPos"               ,lua_Add_object_to_level_at_pos      },
    {"AddEffectGeneratorToLevel"           ,lua_Add_effect_generator_to_level   },
+   {"AddCorpseToLevel"                    ,lua_Add_corpse_to_level             },
    {"PlaceDoor"                           ,lua_Place_door                      },
    {"PlaceTrap"                           ,lua_Place_trap                      },
    {"ChangeSlabOwner"                     ,lua_Change_slab_owner               },
@@ -2232,7 +2309,7 @@ static const luaL_Reg global_methods[] = {
    {"HideHeroGate"                        ,lua_Hide_hero_gate                  },
 
 //Manipulating Configs
-    //{"NewCreatureType"                    ,lua_New_creature_type               },
+    {"NewCreatureType"                      ,lua_New_creature_type               },
     //{"NewObjectType"                      ,lua_New_object_type                 },
     //{"NewTrapType"                        ,lua_New_trap_type                   },
     //{"NewRoomType"                        ,lua_New_room_type                   },

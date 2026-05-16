@@ -450,6 +450,8 @@ static int thing_get_field(lua_State *L) {
         lua_pushinteger(L, get_thing_max_health(thing));
     } else if (strcmp(key, "picked_up") == 0) {
         lua_pushboolean(L, thing_is_picked_up(thing));
+    } else if (strcmp(key, "thing_class") == 0) {
+        lua_pushstring(L, thing_class_code_name(thing->class_id));
     } else if (try_get_from_methods(L, 1, key)) {
         return 1;
     }
@@ -499,6 +501,8 @@ static int thing_get_field(lua_State *L) {
             lua_pushinteger(L, cctrl->hand_blocked_turns);
         } else if (strcmp(key, "state") == 0) {
             lua_pushstring(L, get_conf_parameter_text(creatrstate_desc, thing->active_state));
+        } else if (strcmp(key, "state_besides_interruptions") == 0) {
+            lua_pushstring(L, get_conf_parameter_text(creatrstate_desc, get_creature_state_besides_interruptions(thing)));
         } else if (strcmp(key, "continue_state") == 0) {
             lua_pushstring(L, get_conf_parameter_text(creatrstate_desc, thing->continue_state));
         } else if (strcmp(key, "workroom") == 0) {
@@ -540,6 +544,16 @@ static int thing_get_field(lua_State *L) {
     }
 
     return 1;
+}
+
+static int lua_is_in_enemy_custody(lua_State *L) {
+    struct Thing* thing = luaL_checkThing(L, 1);
+    if (!thing_is_creature(thing)) {
+        lua_pushboolean(L, false);
+    } else {
+        lua_pushboolean(L, creature_is_kept_in_custody_by_enemy(thing));
+    }
+    return 1; 
 }
 
 static int thing_eq(lua_State *L) {
@@ -611,6 +625,7 @@ static const struct luaL_Reg thing_methods[] = {
     {"change_owner"                 ,lua_Change_creature_owner          },
     {"get_annoyance"                ,lua_get_creature_annoyance         },
     {"set_annoyance"                ,lua_set_creature_annoyance         },
+    {"in_enemy_custody"             ,lua_is_in_enemy_custody            }, 
     {NULL, NULL}
 };
 
