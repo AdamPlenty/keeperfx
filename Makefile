@@ -256,7 +256,9 @@ obj/PaletteEffect.o \
 obj/LuaLensEffect.o \
 obj/light_data.o \
 obj/lua_api.o \
+obj/lua_api_camera.o \
 obj/lua_api_lens.o \
+obj/lua_api_map.o \
 obj/lua_api_player.o \
 obj/lua_api_room.o \
 obj/lua_api_things.o \
@@ -667,6 +669,7 @@ deps/centitoml/toml_api.c: deps/centijson/include/json.h
 deps/centitoml/toml_conv.c: deps/centijson/include/json.h
 src/bflib_fmvids.cpp: deps/ffmpeg/libavformat/avformat.h
 src/bflib_sndlib.cpp: deps/openal/include/AL/al.h
+src/net_exchange_gameplay.c: deps/zlib/include/zlib.h
 src/net_resync.cpp: deps/zlib/include/zlib.h
 src/console_cmd.c: deps/luajit/include/lua.h
 src/net_portforward.cpp: deps/miniupnpc/include/miniupnpc/miniupnpc.h deps/libnatpmp/include/natpmp/natpmp.h

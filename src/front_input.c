@@ -29,8 +29,10 @@
 #include "bflib_sprfnt.h"
 #include "bflib_datetm.h"
 #include "bflib_fileio.h"
-#include "net_lobby.h"
 #include "net_exchange_common.h"
+#include "net_exchange_gameplay.h"
+#include "net_game.h"
+#include "net_lobby.h"
 #include "bflib_inputctrl.h"
 #include "bflib_sound.h"
 #include "bflib_sndlib.h"
@@ -419,7 +421,7 @@ static short get_players_message_inputs(void)
         memcpy(player->mp_pending_message, player->mp_message_text, PLAYER_MP_MESSAGE_LEN);
         set_players_packet_action(player, PckA_PlyrMsgEnd, 0, 0, 0, 0);
         if ((game.system_flags & GSF_NetworkActive) != 0) {
-            LbNetwork_SendChatMessageImmediate(player->id_number, player->mp_message_text);
+            send_network_chat_message(player->id_number, player->mp_message_text);
         }
         player->allocflags &= ~PlaF_NewMPMessage;
         memset(player->mp_message_text, 0, PLAYER_MP_MESSAGE_LEN);
@@ -828,10 +830,12 @@ static short get_global_inputs(void)
       return true;
   if (get_screen_capture_inputs())
       return true;
-  if (is_key_pressed(KC_SPACE,KMod_NONE))
-  {
-      if (player->victory_state != VicS_Undecided)
+  if (player->victory_state != VicS_Undecided && is_game_key_pressed(Gkey_FinishLevel, true, false))
       {
+        if ((player->victory_state == VicS_LostLevel) && ((game.system_flags & GSF_NetworkActive) != 0) && (player->id_number == get_host_player_id()))
+        {
+            return true;
+        }
         if ( timer_enabled() )
         {
             update_time();
@@ -839,10 +843,8 @@ static short get_global_inputs(void)
             SYNCMSG("Finished level %d. Total turns taken: %u (%02u:%02u:%02u at %d fps). Real time elapsed: %02u:%02u:%02u:%03u.",
                 game.loaded_level_number, get_gameturn(), GameT.Hours, GameT.Minutes, GameT.Seconds, turns_per_second, Timer.Hours, Timer.Minutes, Timer.Seconds, Timer.MSeconds);
         }
-        set_players_packet_action(player, PckA_FinishGame, 0, 0, 0, 0);
-        clear_key_pressed(KC_SPACE);
+        set_players_packet_action(player, PckA_FinishGame, player->victory_state, 0, 0, 0);
         return true;
-      }
   }
   if ( is_game_key_pressed(Gkey_DumpToOldPos, true, false) )
   {
@@ -882,7 +884,7 @@ static TbBool get_level_lost_inputs(void)
         return true;
     if (is_game_key_pressed(Gkey_FinishLevel, true, false))
     {
-        set_players_packet_action(player, PckA_FinishGame, 0,0,0,0);
+        set_players_packet_action(player, PckA_FinishGame, player->victory_state, 0, 0, 0);
     }
     if (player->view_type == PVT_MapScreen)
     {
@@ -1198,13 +1200,38 @@ static TbBool get_dungeon_control_pausable_action_inputs(void)
     if (is_game_key_pressed(Gkey_CheatMenu1, true, false))
     {
         if (!close_instance_cheat_menu())
+        {
             toggle_main_cheat_menu();
+        }
     }
 
     if (is_game_key_pressed(Gkey_CheatMenu2, true, false))
     {
-        // Note that we're using "close", not "toggle". Menu can't be opened here.
-        close_creature_cheat_menu();
+		if ( (player->continue_work_state == PSt_CreatrQuery) || (player->continue_work_state == PSt_QueryAll) )
+		{
+			struct Thing *creatng = thing_get(player->controlled_thing_idx);
+			if (thing_is_creature(creatng))
+			{
+				if (!close_secondary_cheat_menu()) // Note that we're using "close", not "toggle". Menu can't be opened here.
+				{
+					toggle_creature_cheat_menu();
+				}
+			}
+			else
+			{
+				if (!close_creature_cheat_menu())
+				{
+					toggle_secondary_cheat_menu();
+				}
+			}
+		}
+		else
+		{
+			if (!close_creature_cheat_menu()) // Note that we're using "close", not "toggle". Menu can't be opened here.
+			{
+				toggle_secondary_cheat_menu();
+			}
+		}
     }
     if (player->view_mode == PVM_IsoWibbleView || player->view_mode == PVM_IsoStraightView)
     {
@@ -1582,15 +1609,17 @@ static short get_creature_control_action_inputs(void)
         get_gui_inputs(1);
     if (is_game_key_pressed(Gkey_CheatMenu1, true, false))
     {
-        // Note that we're using "close", not "toggle". Menu can't be opened here.
-        if (!close_main_cheat_menu())
+        if (!close_main_cheat_menu()) // Note that we're using "close", not "toggle". Menu can't be opened here.
         {
             toggle_instance_cheat_menu();
         }
     }
     if (is_game_key_pressed(Gkey_CheatMenu2, true, false))
     {
-        toggle_creature_cheat_menu();
+        if (!close_secondary_cheat_menu()) // Note that we're using "close", not "toggle". Menu can't be opened here.
+		{
+			toggle_creature_cheat_menu();
+		}
     }
     if (is_key_pressed(KC_ESCAPE, KMod_DONTCARE))
     {

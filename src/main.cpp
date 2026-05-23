@@ -34,6 +34,7 @@
 #include "bflib_mouse.h"
 #include "bflib_mshandler.hpp"
 #include "bflib_filelst.h"
+#include "net_exchange_gameplay.h"
 #include "net_lobby.h"
 #include "net_resync.h"
 #include "bflib_planar.h"
@@ -478,7 +479,7 @@ long apply_wallhug_force_to_boulder(struct Thing *thing)
         angle = thing->move_angle_xy;
         if ( (angle) && ( (angle <= ANGLE_EAST) || (angle > ANGLE_WEST) ) )
         {
-          unsigned short y = thing->mappos.y.val;
+          MapCoord y = thing->mappos.y.val;
           pos2.x.val = thing->mappos.x.val;
           pos2.z.val = 0;
           pos2.y.val = y - STL_PER_SLB * speed;
@@ -507,7 +508,7 @@ long apply_wallhug_force_to_boulder(struct Thing *thing)
         }
         else
         {
-          unsigned short x = thing->mappos.x.val;
+          MapCoord x = thing->mappos.x.val;
           pos2.z.val = 0;
           pos2.y.val = thing->mappos.y.val;
           pos2.x.val = x - STL_PER_SLB * speed;
@@ -551,7 +552,7 @@ long process_boulder_collision(struct Thing *boulder, struct Coord3d *pos, int d
                 }
             }
             delete_room_slab(subtile_slab(stl_x), subtile_slab(stl_y), 0); // destroy guardpost
-            for (long k = 0; k < AROUND_TILES_COUNT; k++)
+            for (int16_t k = 0; k < AROUND_TILES_COUNT; k++)
             {
                 create_dirt_rubble_for_dug_block(stl_x + around[k].delta_x, stl_y + around[k].delta_y, 4, room->owner);
             }
@@ -1750,7 +1751,7 @@ void clear_game(void)
     init_animating_texture_maps();
     clear_slabsets();
     game.skip_initial_input_turns = 0;
-    clear_input_lag_queue();
+    initialize_packet_history();
 }
 
 void clear_game_for_save(void)
@@ -1866,6 +1867,14 @@ void turn_off_query(PlayerNumber plyr_idx)
     set_player_instance(player, PI_UnqueryCrtr, 0);
 }
 
+long filter_creatures_owned_by_keepers(const struct Thing *thing, MaxTngFilterParam, long)
+{
+    if (player_is_keeper(thing->owner)) {
+        return INT32_MAX;
+    }
+    return -1;
+}
+
 void level_lost_go_first_person(PlayerNumber plyr_idx)
 {
     struct CreatureControl *cctrl;
@@ -1882,21 +1891,29 @@ void level_lost_go_first_person(PlayerNumber plyr_idx)
     }
     spectator_breed = get_players_spectator_model(plyr_idx);
     player->dungeon_camera_zoom = get_camera_zoom(get_player_active_camera(player));
-    thing = create_and_control_creature_as_controller(player, spectator_breed, &dungeon->mappos);
+    struct CompoundTngFilterParam param = {};
+    param.class_id = TCls_Creature;
+    struct Thing *spawn_creatng = get_random_thing_of_class_with_filter(filter_creatures_owned_by_keepers, &param, plyr_idx);
+    if (!thing_exists(spawn_creatng)) {
+        return;
+    }
+    struct Coord3d mappos = spawn_creatng->mappos;
+    thing = create_and_control_creature_as_controller(player, spectator_breed, &mappos);
     if (thing_is_invalid(thing)) {
         ERRORLOG("Unable to create spectator creature");
         return;
     }
+    move_creature_to_nearest_valid_position(thing);
     cctrl = creature_control_get_from_thing(thing);
     cctrl->creature_control_flags |= CCFlg_NoCompControl;
     SYNCDBG(8,"Finished");
 }
 
-void set_general_information(long msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
+void set_general_information(int32_t msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
 {
     struct PlayerInfo *player = get_player(plyr_idx);
-    long pos_x = 0;
-    long pos_y = 0;
+    MapCoord pos_x = 0;
+    MapCoord pos_y = 0;
     find_map_location_coords(target, &x, &y, plyr_idx, __func__);
     if ((x != 0) || (y != 0))
     {
@@ -1906,11 +1923,11 @@ void set_general_information(long msg_id, PlayerNumber plyr_idx, TbMapLocation t
     event_create_event(pos_x, pos_y, EvKind_Information, player->id_number, -msg_id);
 }
 
-void set_quick_information(long msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
+void set_quick_information(int32_t msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
 {
     struct PlayerInfo *player = get_player(plyr_idx);
-    long pos_x = 0;
-    long pos_y = 0;
+    MapCoord pos_x = 0;
+    MapCoord pos_y = 0;
     find_map_location_coords(target, &x, &y, plyr_idx, __func__);
     if ((x != 0) || (y != 0))
     {
@@ -1920,7 +1937,7 @@ void set_quick_information(long msg_id, PlayerNumber plyr_idx, TbMapLocation tar
     event_create_event(pos_x, pos_y, EvKind_QuickInformation, player->id_number, -msg_id);
 }
 
-void set_general_objective(long msg_id, PlayerNumber plyr_idx, TbMapLocation target, long x, long y)
+void set_general_objective(int32_t msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
 {
     process_objective(get_string(msg_id), plyr_idx, target, x, y);
 }
@@ -2027,7 +2044,10 @@ void set_mouse_light(struct PlayerInfo *player)
     SYNCDBG(6,"Starting");
     struct Packet *pckt;
     if (is_my_player(player)) {
-        pckt = get_local_input_lag_packet_for_turn(get_gameturn());
+        pckt = (struct Packet *)get_history_packet(player->packet_num, get_gameturn());
+        if (pckt == NULL) {
+            pckt = get_packet_direct(player->packet_num);
+        }
     } else {
         pckt = get_packet_direct(player->packet_num);
     }
@@ -2645,7 +2665,7 @@ void update(void)
     }
     if (game.game_kind == GKind_NonInteractiveState)
     {
-        game.map_changed_for_nagivation = 0;
+        game.map_changed_for_navigation = 0;
         return;
     }
     player = get_my_player();
@@ -3234,6 +3254,10 @@ TbBool keeper_screen_swap(void)
  * Waits until the next game turn. Delay is usually controlled by
  * num_fps variable.
  */
+extern "C" {
+int32_t multiplayer_speed_adjustment_ns;
+}
+
 TbBool keeper_wait_for_next_turn(void)
 {
     const long double tick_ns_one_sec = 1000000000.0;
@@ -3246,7 +3270,7 @@ TbBool keeper_wait_for_next_turn(void)
     if (game.frame_skip >= 0)
     {
         // Standard delaying system
-        long num_fps = turns_per_second;
+        int32_t num_fps = turns_per_second;
         if (game.frame_skip > 0)
             num_fps *= game.frame_skip;
 
@@ -3259,6 +3283,9 @@ TbBool keeper_wait_for_next_turn(void)
         long double tick_ns_cur = get_time_tick_ns();
         long double tick_ns_used = tick_ns_cur - tick_ns_last_turn;
         long double tick_ns_delay = tick_ns_one_frame - tick_ns_used;
+        if (multiplayer_speed_adjustment_ns != 0) {
+            tick_ns_delay += multiplayer_speed_adjustment_ns;
+        }
 
         long double tick_ns_end = tick_ns_cur;
         // tick_ns_used: every level, initialized_time_point will be reset, so tick_ns_used may be less than 0 when enter level for the non-first time, Skip it directly to solve the problem.
@@ -3436,11 +3463,38 @@ void gameplay_loop_draw()
     last_draw_completed_time = get_time_tick_ns();
 }
 
-extern "C" void network_yield_draw_gameplay()
+static void update_gameplay_delta_time()
 {
     game.delta_time = get_delta_time();
-    game.process_turn_time += game.delta_time;
+    float process_delta_time = game.delta_time;
+    if (multiplayer_speed_adjustment_ns != 0 && turns_per_second > 0) {
+        double tick_ns_one_turn = 1000000000.0 / turns_per_second;
+        double tick_ns_adjusted_turn = tick_ns_one_turn + multiplayer_speed_adjustment_ns;
+        if (tick_ns_adjusted_turn > 0) {
+            process_delta_time = (float)(process_delta_time * tick_ns_one_turn / tick_ns_adjusted_turn);
+        }
+    }
+    game.process_turn_time += process_delta_time;
+}
+
+extern "C" void network_yield_draw_gameplay()
+{
+    update_gameplay_delta_time();
     gameplay_loop_draw();
+}
+
+void gameplay_loop_timestep();
+
+extern "C" void network_yield_waiting_gameplay_packets()
+{
+    frametime_end_measurement(Frametime_Logic);
+    do_draw = true;
+    poll_inputs();
+    gameplay_loop_draw();
+    gameplay_loop_timestep();
+    frametime_start_measurement(Frametime_Logic);
+    if (frametime_enabled())
+        framerate_measurement_capture(Framerate_Logic);
 }
 
 extern "C" void update_velocity(void);
@@ -3469,8 +3523,7 @@ void gameplay_loop_timestep()
 {
     frametime_start_measurement(Frametime_Sleep);
     if (is_feature_on(Ft_DeltaTime) == true) {
-        game.delta_time = get_delta_time();
-        game.process_turn_time += game.delta_time;
+        update_gameplay_delta_time();
     } else {
         // Set to 1 so that these variables don't affect anything. (if something is multiplied by 1 it doesn't change)
         game.delta_time = 1;
@@ -3510,7 +3563,6 @@ void keeper_gameplay_loop(void)
 
     initial_time_point();
     LbSleepExtInit();
-    LbNetwork_TimesyncBarrier();
 
     //the main gameplay loop starts
     while ((!quit_game) && (!exit_keeper))
@@ -3655,7 +3707,6 @@ static TbBool wait_at_frontend(void)
         TbBool result = false;
         if (start_params.selected_campaign[0] != '\0')
         {
-            str_append(start_params.selected_campaign, sizeof(start_params.selected_campaign), ".cfg");
             result = change_campaign(CampgnT_Default, start_params.selected_campaign);
         }
         if (!result) {
