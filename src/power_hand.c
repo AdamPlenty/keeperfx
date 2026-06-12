@@ -40,6 +40,7 @@
 #include "thing_stats.h"
 #include "thing_navigate.h"
 #include "creature_graphics.h"
+#include "creature_instances.h"
 #include "creature_states.h"
 #include "creature_states_mood.h"
 #include "creature_states_combt.h"
@@ -218,6 +219,9 @@ TbBool armageddon_blocks_creature_pickup(const struct Thing *thing, PlayerNumber
 
 long can_thing_be_picked_up_by_player(const struct Thing *thing, PlayerNumber plyr_idx)
 {
+    if (thing_is_creature(thing) && flag_is_set(get_creature_model_flags(thing), CMF_CannotPickUp)) {
+        return false;
+    }
     if (thing_is_creature(thing) && thing_pickup_is_blocked_by_hand_rule(thing, plyr_idx)) {
         return false;
     }
@@ -245,7 +249,6 @@ TbBool can_thing_be_picked_up2_by_player(const struct Thing *thing, PlayerNumber
     {
         return (thing_is_object(thing) && object_is_pickable_by_hand_for_use(thing, plyr_idx));
     }
-
     if ( (game.armageddon_cast_turn > 0) && ( (game.conf.rules[game.armageddon_caster_idx].magic.armageddon_count_down + game.armageddon_cast_turn) <= get_gameturn()) )
     {
         return false;
@@ -944,6 +947,9 @@ void drop_held_thing_on_ground(struct Dungeon *dungeon, struct Thing *droptng, c
     remove_thing_from_limbo(droptng);
     if (thing_is_creature(droptng))
     {
+        if (game.conf.rules[droptng->owner].creature.instance_delay_on_drop > 0) {
+            delay_instances_on_drop(droptng);
+        }
         initialise_thing_state(droptng, CrSt_CreatureBeingDropped);
         stop_creature_sound(droptng, 5);
         if (is_my_player_number(dungeon->owner)) {
