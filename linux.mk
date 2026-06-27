@@ -55,6 +55,7 @@ src/bflib_sndlib.cpp \
 src/bflib_sound.c \
 src/bflib_sprfnt.c \
 src/bflib_string.c \
+src/bflib_text.c \
 src/bflib_video.c \
 src/bflib_vidraw.c \
 src/bflib_vidraw_spr_norm.c \
@@ -171,6 +172,7 @@ src/highscores.c \
 src/kjm_input.c \
 src/lens_api.c \
 src/config_effects.c \
+src/kfx_memory.c \
 src/kfx/lense/DisplacementEffect.cpp \
 src/kfx/lense/FlyeyeEffect.cpp \
 src/kfx/lense/LensEffect.cpp \
