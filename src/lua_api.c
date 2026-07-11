@@ -395,7 +395,7 @@ static int lua_Set_next_level(lua_State *L)
 static int lua_Add_creature_to_level(lua_State *L)
 {
     PlayerNumber plr_idx   = luaL_checkPlayerSingle(L, 1);
-    long crtr_id           = luaL_checkNamedCommand(L,2,creature_desc);
+    ThingModel crtr_id     = luaL_checkNamedCommand(L,2,creature_desc);
     TbMapLocation location = luaL_checkLocation(L,  3);
     long crtr_level        = luaL_checkinteger(L, 4);
     long carried_gold      = luaL_checkinteger(L, 5);
@@ -1751,7 +1751,7 @@ static int lua_Set_music(lua_State *L)
 
         long track_number = luaL_checkinteger(L, 1);
         if (track_number == 0) {
-            stop_music();
+            stop_music(true);
         }
         else {
             play_music_track(track_number);
