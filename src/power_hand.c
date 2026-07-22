@@ -334,7 +334,7 @@ void set_power_hand_graphic(unsigned char plyr_idx, long HandAnimationID)
     }
     if (player->hand_busy_until_turn < get_gameturn())
     {
-        if (player->hand_animationId != HandAnimationID)
+        if ((player->hand_animationId != HandAnimationID) || (HandAnimationID == HndA_Pickup))
         {
             player->hand_animationId = HandAnimationID;
             struct Thing *thing = thing_get(player->hand_thing_idx);
@@ -649,12 +649,12 @@ void draw_power_hand(void)
                 if (crconf->transparency_flags == TRF_Transpar_8)
                 {
                     lbDisplay.DrawFlags |= Lb_SPRITE_TRANSPAR8;
-                    lbDisplay.DrawFlags &= ~Lb_TEXT_UNDERLNSHADOW;
+                    lbDisplay.DrawFlags &= ~Lb_SPRITE_REMAP;
                 }
                 else if (crconf->transparency_flags == TRF_Transpar_4)
                 {
                     lbDisplay.DrawFlags |= Lb_SPRITE_TRANSPAR4;
-                    lbDisplay.DrawFlags &= ~Lb_TEXT_UNDERLNSHADOW;
+                    lbDisplay.DrawFlags &= ~Lb_SPRITE_REMAP;
                 }
                 else if(crconf->transparency_flags == TRF_Transpar_Alpha)
                 {
