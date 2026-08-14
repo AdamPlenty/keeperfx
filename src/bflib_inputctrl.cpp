@@ -27,6 +27,7 @@
 #include "bflib_mouse.h"
 #include "bflib_joyst.h"
 #include "bflib_video.h"
+#include "kfx/platform/WindowSystemSDL.h"
 #include "bflib_planar.h"
 #include "bflib_sndlib.h"
 #include "bflib_mshandler.hpp"
@@ -45,7 +46,6 @@ using namespace std;
 extern "C" {
 #endif
 /******************************************************************************/
-volatile TbBool lbAppActive;
 volatile int lbUserQuit = 0;
 
 unsigned char last_used_input_device = 0;
@@ -319,9 +319,20 @@ static void process_event(const SDL_Event *ev)
         {
           return;
         }
+        if (!lbMouseGrabbed && !GetSDLWindowSystem()->IsCursorInWindow())
+        {
+          break;
+        }
         static int frac_x = 0, frac_y = 0;
+        static bool s_recenter_pending = false;
         if (lbMouseGrabbed && lbDisplay.MouseMoveRatio > 0)
         {
+            // Warp-based relative motion (Wine-safe).
+            if (s_recenter_pending)
+            {
+                s_recenter_pending = false;
+                break;
+            }
             int dx = ev->motion.xrel * lbDisplay.MouseMoveRatio + frac_x;
             int dy = ev->motion.yrel * lbDisplay.MouseMoveRatio + frac_y;
 
@@ -330,6 +341,18 @@ static void process_event(const SDL_Event *ev)
 
             frac_x = dx - (mouseDelta.x * 256);
             frac_y = dy - (mouseDelta.y * 256);
+
+            IWindowSystem* ws = GetSDLWindowSystem();
+            int win_w = 0, win_h = 0;
+            ws->GetWindowSize(&win_w, &win_h);
+            const int margin = 48;
+            if (win_w > 2 * margin && win_h > 2 * margin &&
+                (ev->motion.x <= margin || ev->motion.x >= win_w - margin ||
+                 ev->motion.y <= margin || ev->motion.y >= win_h - margin))
+            {
+                ws->WarpCursor(win_w / 2, win_h / 2);
+                s_recenter_pending = true;
+            }
         }
         else
         {
@@ -404,7 +427,7 @@ static void process_event(const SDL_Event *ev)
     // top-level event type (SDL_EVENT_WINDOW_*).
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
     {
-        lbAppActive = true;
+        GetSDLWindowSystem()->OnFocusGained();
         isMouseActive = true;
         isMouseActivated = true;
         LbGrabMouseCheck(MG_OnFocusGained);
@@ -421,7 +444,7 @@ static void process_event(const SDL_Event *ev)
     }
     case SDL_EVENT_WINDOW_FOCUS_LOST:
     {
-        lbAppActive = false;
+        GetSDLWindowSystem()->OnFocusLost();
         isMouseActive = false;
         isMouseActivated = false;
         LbGrabMouseCheck(MG_OnFocusLost);
@@ -437,7 +460,7 @@ static void process_event(const SDL_Event *ev)
     }
     case SDL_EVENT_WINDOW_MOUSE_ENTER:
     {
-        if (lbAppActive)
+        if (GetSDLWindowSystem()->IsAppActive())
         {
             isMouseActive = true;
             isMouseActivated = true;
@@ -458,6 +481,14 @@ static void process_event(const SDL_Event *ev)
          // todo (allow window to be freely scaled): add window resize function that does what is needed, and call this new function from window init function too
     } */
     case SDL_EVENT_WINDOW_RESIZED:
+        break;
+
+    case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+        LbSetMouseGrab(lbMouseGrabbed);
+        break;
+
+    case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+        LbSetMouseGrab(lbMouseGrabbed);
         break;
 
     case SDL_EVENT_GAMEPAD_AXIS_MOTION:
@@ -498,7 +529,7 @@ TbBool LbIsActive(void)
     if (!lbScreenInitialised)
         return true;
 
-    return lbAppActive;
+    return GetSDLWindowSystem()->IsAppActive();
 }
 
 TbBool LbIsMouseActive(void)
@@ -508,7 +539,7 @@ TbBool LbIsMouseActive(void)
 
 void LbMouseCheckPosition(TbBool grab_state_changed)
 {
-    if (!lbAppActive)
+    if (!GetSDLWindowSystem()->IsAppActive())
     {
         if (IsMouseInsideWindow())
         {
@@ -537,14 +568,14 @@ void LbMouseCheckPosition(TbBool grab_state_changed)
             if (firstTimeMouseInit) // if start no-grab, move cursor appropriately
             {
                 firstTimeMouseInit = false;
-                if (IsMouseInsideWindow() && lbAppActive)
+                if (IsMouseInsideWindow() && GetSDLWindowSystem()->IsAppActive())
                 {
                     LbMoveGameCursorToHostCursor();
                 }
             }
             else if (grab_state_changed) // if release grab, move cursor appropriately
             {
-                if (IsMouseInsideWindow() && lbAppActive)
+                if (IsMouseInsideWindow() && GetSDLWindowSystem()->IsAppActive())
                 {
                     LbMoveHostCursorToGameCursor();
                 }
@@ -555,33 +586,21 @@ void LbMouseCheckPosition(TbBool grab_state_changed)
 
 void LbSetMouseGrab(TbBool grab_mouse)
 {
+    IWindowSystem* ws = GetSDLWindowSystem();
+    if (!ws->HasOSCursor()) // consoles will have no OS cursor to grab or hide
+        return;
     TbBool previousGrabState = lbMouseGrabbed;
     lbMouseGrabbed = grab_mouse;
     if (lbMouseGrabbed)
     {
         LbMouseCheckPosition((previousGrabState != lbMouseGrabbed));
-        if (SDL_getenv("NO_RELATIVE_MOUSE"))
-        {
-            JUSTLOG("NO_RELATIVE_MOUSE is set");
-        }
-        else
-        {
-            SDL_SetWindowRelativeMouseMode(lbWindow, true);
-        }
+        ws->SetCursorGrab(true);
     }
     else
     {
-        if (SDL_getenv("NO_RELATIVE_MOUSE"))
-        {
-            JUSTLOG("NO_RELATIVE_MOUSE is set");
-        }
-        else
-        {
-            SDL_SetWindowRelativeMouseMode(lbWindow, false);
-        }
+        ws->SetCursorGrab(false);
         LbMouseCheckPosition((previousGrabState != lbMouseGrabbed));
     }
-    if (lbAppActive) SDL_HideCursor(); else SDL_ShowCursor(); // show host OS cursor when window has lost focus
 }
 
 static void LbClearTextInput(void)
@@ -629,15 +648,11 @@ void LbGrabMouseInit(void)
 
 void LbGrabMouseCheck(long grab_event)
 {
-    TbBool window_has_focus = lbAppActive;
     TbBool paused = ((game.operation_flags & GOF_Paused) != 0);
     TbBool possession_mode = (get_my_player()->view_type == PVT_CreatureContrl) && ((game.view_mode_flags & GNFldD_CreaturePasngr) == 0);
     TbBool grab_cursor = lbMouseGrabbed;
-    if (!window_has_focus)
-    {
-        grab_cursor = false;
-    }
-    else
+    // ASSUMPTION: SDL3 auto-suspends/resumes relative mode on focus; grab is driven
+    // by game intent only, never forced off by focus loss.
     {
         if (!game.packet_load_enable)
         {

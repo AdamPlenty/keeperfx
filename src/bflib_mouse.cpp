@@ -27,6 +27,7 @@
 #include "bflib_basics.h"
 #include "globals.h"
 #include "bflib_video.h"
+#include "kfx/platform/PlatformManager.h"
 #include "bflib_sprite.h"
 #include "bflib_vidraw.h"
 #include "bflib_mshandler.hpp"
@@ -115,8 +116,7 @@ TbResult LbMouseSetPosition(long x, long y)
   {
     return Lb_FAIL;
   }
-  SDL_Window *window = lbWindow;
-  SDL_WarpMouseInWindow(window, (float)x, (float)y);
+  PlatformManager_WarpCursor((int)x, (int)y);
   return Lb_SUCCESS;
 }
 
@@ -154,13 +154,7 @@ TbResult LbMoveGameCursorToHostCursor(void)
 
 TbBool IsMouseInsideWindow(void)
 {
-    SDL_Window *window = SDL_GetMouseFocus();
-    TbBool isMouseInsideWindow = ((window != NULL) ? true : false); // if window == NULL then the mouse must be outside the kfx window
-    if (!LbIsMouseActive() && !lbMouseGrabbed)
-    {
-        isMouseInsideWindow = false; // LbIsMouseActive() == false when mouse cursor outside window
-    }
-    return isMouseInsideWindow;
+    return PlatformManager_IsCursorInWindow() ? true : false;
 }
 
 TbResult LbMouseChangeSprite(const struct TbSprite *pointerSprite)

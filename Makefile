@@ -140,7 +140,6 @@ obj/bflib_vidraw_spr_onec.o \
 obj/bflib_vidraw_spr_remp.o \
 obj/bflib_vidsurface.o \
 obj/button_snapping.o \
-obj/cdrom.o \
 obj/config.o \
 obj/config_campaigns.o \
 obj/config_creature.o \
@@ -231,6 +230,7 @@ obj/frontmenu_net.o \
 obj/frontmenu_net_data.o \
 obj/frontmenu_options.o \
 obj/frontmenu_saves.o \
+obj/gui_vscroll.o \
 obj/frontmenu_specials.o \
 obj/game_heap.o \
 obj/game_legacy.o \
@@ -302,6 +302,9 @@ obj/packets.o \
 obj/packets_cheats.o \
 obj/packets_input.o \
 obj/packets_misc.o \
+obj/kfx/platform/PlatformManager.o \
+obj/kfx/platform/PlatformWindows.o \
+obj/kfx/platform/WindowSystemSDL.o \
 obj/player_compchecks.o \
 obj/player_compevents.o \
 obj/player_complookup.o \
@@ -336,7 +339,6 @@ obj/slab_data.o \
 obj/sounds.o \
 obj/sound_manager.o \
 obj/spdigger_stack.o \
-obj/steam_api.o \
 obj/tasks_list.o \
 obj/thing_corpses.o \
 obj/thing_creature.o \
@@ -357,7 +359,6 @@ obj/vidfade.o \
 obj/vidmode_data.o \
 obj/vidmode.o \
 obj/spritesheet.o \
-obj/windows.o \
 $(FTEST_OBJS) \
 $(RES)
 
@@ -397,6 +398,7 @@ LINKLIB = -mwindows \
 	deps/luajit/lib/libluajit.a \
 	-lwinmm -lmingw32 -limagehlp -lws2_32 -ldbghelp -lbcrypt -lole32 -luuid
 INCS = \
+	-I"src" \
 	-I"deps/zlib/include" \
 	-I"deps/spng/include" \
 	-I"sdl/include" \
@@ -518,6 +520,7 @@ obj/std/ftests \
 obj/std/ftests/tests \
 obj/tests obj/cu \
 obj/std/centitoml obj/hvlog/centitoml \
+obj/std/kfx/platform obj/hvlog/kfx/platform \
 sdl/for_final_package
 
 $(shell $(MKDIR) $(FOLDERS))
