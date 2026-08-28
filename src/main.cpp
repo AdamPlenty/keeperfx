@@ -15,6 +15,7 @@
 
 #include "platform.h"
 #include "kfx/platform/PlatformManager.h"
+#include "kfx/renderer/RendererManager.h"
 #include "keeperfx.hpp"
 
 #include "bflib_coroutine.h"
@@ -60,6 +61,7 @@
 #include "config_slabsets.h"
 #include "config_strings.h"
 #include "config_campaigns.h"
+#include "front_landview.h"
 #include "config_terrain.h"
 #include "config_objects.h"
 #include "config_magic.h"
@@ -266,7 +268,7 @@ void init_keeper(void)
     game.neutral_player_num = PLAYER_NEUTRAL;
     poly_pool_end = &poly_pool[sizeof(poly_pool)-128];
     lbDisplay.GlassMap = pixmap.ghost;
-    lbDisplay.DrawColour = colours[15][15][15];
+    RendererSetDrawColour(colours[15][15][15]);
     game.comp_player_aggressive  = (comp_player_conf.player_assist_default == comp_player_conf.computer_assist_types[0]);
     game.comp_player_defensive   = (comp_player_conf.player_assist_default == comp_player_conf.computer_assist_types[1]);
     game.comp_player_construct   = (comp_player_conf.player_assist_default == comp_player_conf.computer_assist_types[2]);
@@ -297,7 +299,7 @@ TbBool initial_setup(void)
     load_pointer_file(0);
     update_screen_mode_data(320, 200);
     clear_game();
-    lbDisplay.DrawFlags |= 0x4000u;
+    RendererAddDrawFlags(0x4000u);
     return true;
 }
 
@@ -346,6 +348,7 @@ short setup_game(void)
   features_enabled &= ~Ft_FreezeOnLoseFocus; // don't freeze the game, if the game window loses focus
   features_enabled &= ~Ft_UnlockCursorOnPause; // don't unlock the mouse cursor from the window, if the user pauses the game
   features_enabled |= Ft_LockCursorInPossession; // lock the mouse cursor to the window, when the user enters possession mode (when the cursor is already unlocked)
+  features_enabled |= Ft_RelativeMouseMode; // use SDL relative ("raw") mouse mode; set RELATIVE_MOUSE_MODE=OFF for the grab-and-warp scheme
   features_enabled &= ~Ft_PauseMusicOnGamePause; // don't pause the music, if the user pauses the game
   features_enabled &= ~Ft_MuteAudioOnLoseFocus; // don't mute the audio, if the game window loses focus
   features_enabled &= ~Ft_SkipHeartZoom; // don't skip the dungeon heart zoom in
@@ -958,6 +961,9 @@ void clear_things_and_persons_data(void)
 {
     struct Thing *thing;
     long i;
+    memset(game.thing_lists, 0, sizeof(game.thing_lists));
+    game.ambient_sound_thing_idx = 0;
+    game.nodungeon_creatr_list_start = 0;
     for (i=0; i < THINGS_COUNT; i++)
     {
         thing = &game.things_data[i];
@@ -1156,7 +1162,7 @@ void PaletteSetPlayerPalette(struct PlayerInfo *player, unsigned char *pal)
         if (is_my_player(player))
         {
             LbScreenWaitVbi();
-            LbPaletteSet(pal);
+            RendererPaletteSet(pal);
         }
     }
 }
@@ -1256,6 +1262,17 @@ void level_lost_go_first_person(PlayerNumber plyr_idx)
 
 void set_general_information(int32_t msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
 {
+    set_general_information_with_icon(
+        msg_id,
+        plyr_idx,
+        target,
+        x,
+        y,
+        -1);
+}
+
+void set_general_information_with_icon(int32_t msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y, short icon_idx)
+{
     struct PlayerInfo *player = get_player(plyr_idx);
     MapCoord pos_x = 0;
     MapCoord pos_y = 0;
@@ -1265,34 +1282,59 @@ void set_general_information(int32_t msg_id, PlayerNumber plyr_idx, TbMapLocatio
         pos_y = subtile_coord_center(y);
         pos_x = subtile_coord_center(x);
     }
-    event_create_event(pos_x, pos_y, EvKind_Information, player->id_number, -msg_id);
+    struct Event* event = event_create_event(pos_x, pos_y, EvKind_Information, player->id_number, -msg_id);
+    if (!event_is_invalid(event))
+        event->icon_idx = icon_idx;
+}
+
+void set_quick_information_with_icon(int32_t msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y, short icon_idx)
+{
+    struct PlayerInfo *player = get_player(plyr_idx);
+    MapCoord pos_x = 0;
+    MapCoord pos_y = 0;
+    find_map_location_coords(target, &x, &y, plyr_idx, __func__);
+    if ((x != 0) || (y != 0))
+    {
+        pos_y = subtile_coord_center(y);
+        pos_x = subtile_coord_center(x);
+    }
+    struct Event* event = event_create_event(pos_x, pos_y, EvKind_QuickInformation, player->id_number, -msg_id);
+    if (!event_is_invalid(event))
+        event->icon_idx = icon_idx;
 }
 
 void set_quick_information(int32_t msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
 {
-    struct PlayerInfo *player = get_player(plyr_idx);
-    MapCoord pos_x = 0;
-    MapCoord pos_y = 0;
-    find_map_location_coords(target, &x, &y, plyr_idx, __func__);
-    if ((x != 0) || (y != 0))
-    {
-        pos_y = subtile_coord_center(y);
-        pos_x = subtile_coord_center(x);
-    }
-    event_create_event(pos_x, pos_y, EvKind_QuickInformation, player->id_number, -msg_id);
+    set_quick_information_with_icon(
+        msg_id,
+        plyr_idx,
+        target,
+        x,
+        y,
+        -1);
 }
 
 void set_general_objective(int32_t msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
 {
-    process_objective(get_string(msg_id), plyr_idx, target, x, y);
+    set_general_objective_with_icon(msg_id, plyr_idx, target, x, y, -1);
+}
+
+void set_general_objective_with_icon(int32_t msg_id, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y, short icon_idx)
+{
+    process_objective_with_icon(get_string(msg_id), plyr_idx, target, x, y, icon_idx);
 }
 
 void process_objective(const char *msg_text, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y)
 {
+    process_objective_with_icon(msg_text, plyr_idx, target, x, y, -1);
+}
+
+void process_objective_with_icon(const char *msg_text, PlayerNumber plyr_idx, TbMapLocation target, MapSubtlCoord x, MapSubtlCoord y, short icon_idx)
+{
     struct PlayerInfo *player = get_player(plyr_idx);
     find_map_location_coords(target, &x, &y, plyr_idx, __func__);
     set_level_objective(player->id_number, msg_text);
-    display_objectives(player->id_number, x, y);
+    display_objectives_with_icon(player->id_number, x, y, icon_idx);
 }
 
 short winning_player_quitting(struct PlayerInfo *player, int32_t *plyr_count)
@@ -1559,7 +1601,7 @@ void engine(struct PlayerInfo *player, struct Camera *cam)
 
     SYNCDBG(9,"Starting");
 
-    flg_mem = lbDisplay.DrawFlags;
+    flg_mem = RendererGetDrawFlags();
     update_engine_settings(player);
     mx = cam->mappos.x.val;
     my = cam->mappos.y.val;
@@ -1579,7 +1621,7 @@ void engine(struct PlayerInfo *player, struct Camera *cam)
         ewnd.width, ewnd.height);
     camera_zoom = scale_camera_zoom_to_screen(cam->zoom);
     draw_view(cam, 0);
-    lbDisplay.DrawFlags = flg_mem;
+    RendererSetDrawFlags(flg_mem);
     thing_being_displayed = 0;
     LbScreenLoadGraphicsWindow(&grwnd);
 }
@@ -1655,16 +1697,6 @@ extern "C" void network_yield_draw_gameplay()
     gameplay_loop_draw();
 }
 
-extern "C" void network_yield_waiting_gameplay_packets()
-{
-    poll_inputs();
-    gameplay_loop_draw();
-    update_gameplay_delta_time();
-    // Reduce game speed during lag spikes.
-    if (game.process_turn_time > 2.0)
-        game.process_turn_time = 2.0;
-}
-
 extern "C" void update_velocity(void);
 extern "C" void check_mouse_scroll(void);
 extern "C" void fronttorture_update(void);
@@ -1684,7 +1716,7 @@ extern "C" void network_yield_draw_frontend()
         frontnet_start_input();
     }
     frontend_draw();
-    LbScreenSwap();
+    RendererPresentFrame();
 }
 
 TbBool can_thing_be_queried(struct Thing *thing, PlayerNumber plyr_idx)
@@ -2051,7 +2083,7 @@ static short reset_game(void)
 
     LbMouseSuspend();
     LbIKeyboardClose();
-    LbScreenReset(false);
+    RendererResetScreen(false);
     LbDataFreeAllV2(game_load_files);
     free_gui_strings_data();
     free_level_strings_data();
@@ -2077,10 +2109,11 @@ int LbBullfrogMain(unsigned short argc, char *argv[])
 
     retval = true;
     retval &= (LbTimerInit() != Lb_FAIL);
-    retval &= (LbScreenInitialize() != Lb_FAIL);
+    retval &= (RendererScreenInitialize() != Lb_FAIL);
+    retval &= (RendererInit(RENDERER_SOFTWARE) != 0);
     LbSetTitle(PROGRAM_NAME);
     LbSetIcon(1);
-    LbScreenSetDoubleBuffering(true);
+    RendererSetDoubleBuffering(true);
     srand(LbTimerClock());
 
 #ifdef FUNCTESTING
@@ -2114,7 +2147,8 @@ int LbBullfrogMain(unsigned short argc, char *argv[])
         game_loop();
     }
     reset_game();
-    LbScreenReset(true);
+    RendererResetScreen(true);
+    RendererShutdown();
     if ( retval == 0 )
     {
         static const char *msg_text="Setting up game failed.\n";

@@ -17,6 +17,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "kfx/renderer/RendererManager.h"
 #include "frontmenu_ingame_evnt.h"
 #include "globals.h"
 #include "bflib_basics.h"
@@ -265,10 +266,10 @@ void gui_area_friendly_battlers(struct GuiButton *gbtn)
     int units_per_px = (gbtn->width * 16 + 160 / 2) / 160;
     int wdelta = gbtn->width / 7;
     int scr_pos_x = gbtn->scr_pos_x - wdelta + gbtn->width;
-    lbDisplay.DrawFlags |= Lb_SPRITE_TRANSPAR4;
+    RendererAddDrawFlags(Lb_SPRITE_TRANSPAR4);
     LbDrawBox(gbtn->scr_pos_x, gbtn->scr_pos_y,
         gbtn->width, gbtn->height, colours[0][0][0]);
-    lbDisplay.DrawFlags &= ~Lb_SPRITE_TRANSPAR4;
+    RendererClearDrawFlags(Lb_SPRITE_TRANSPAR4);
     for (int battlr_id = 0; battlr_id < MESSAGE_BATTLERS_COUNT-1; battlr_id++)
     {
         int i = friendly_battler_list[MESSAGE_BATTLERS_COUNT * visbtl_id + battlr_id];
@@ -281,10 +282,10 @@ void gui_area_friendly_battlers(struct GuiButton *gbtn)
               if ((get_gameturn() % (4 * gui_blink_rate)) >= 2 * gui_blink_rate)
               {
                   TbPixel col = player_flash_colours[(get_gameturn() % (4 * neutral_flash_rate)) / neutral_flash_rate];
-                  lbDisplay.DrawFlags |= (Lb_SPRITE_OUTLINE|0x0004);
+                  RendererAddDrawFlags((Lb_SPRITE_OUTLINE|0x0004));
                   LbDrawBox(scr_pos_x, gbtn->scr_pos_y,
                     wdelta, gbtn->height, col);
-                  lbDisplay.DrawFlags &= ~(Lb_SPRITE_OUTLINE|0x0004);
+                  RendererClearDrawFlags((Lb_SPRITE_OUTLINE|0x0004));
               }
             }
             scr_pos_x -= wdelta;
@@ -328,10 +329,10 @@ void gui_area_enemy_battlers(struct GuiButton *gbtn)
     int units_per_px = (gbtn->width * 16 + 160 / 2) / 160;
     int wdelta = gbtn->width / 7;
     int scr_pos_x = gbtn->scr_pos_x;
-    lbDisplay.DrawFlags |= Lb_SPRITE_TRANSPAR4;
+    RendererAddDrawFlags(Lb_SPRITE_TRANSPAR4);
     LbDrawBox(gbtn->scr_pos_x, gbtn->scr_pos_y,
         gbtn->width, gbtn->height, colours[0][0][0]);
-    lbDisplay.DrawFlags &= ~Lb_SPRITE_TRANSPAR4;
+    RendererClearDrawFlags(Lb_SPRITE_TRANSPAR4);
     for (int battlr_id = 0; battlr_id < MESSAGE_BATTLERS_COUNT-1; battlr_id++)
     {
         int i = enemy_battler_list[MESSAGE_BATTLERS_COUNT * visbtl_id + battlr_id];
@@ -344,10 +345,10 @@ void gui_area_enemy_battlers(struct GuiButton *gbtn)
               if ((get_gameturn() % (4 * gui_blink_rate)) >= 2 * gui_blink_rate)
               {
                   TbPixel col = player_flash_colours[(get_gameturn() % (4 * neutral_flash_rate)) / neutral_flash_rate];
-                  lbDisplay.DrawFlags |= (Lb_SPRITE_OUTLINE|0x0004);
+                  RendererAddDrawFlags((Lb_SPRITE_OUTLINE|0x0004));
                   LbDrawBox(scr_pos_x, gbtn->scr_pos_y,
                     wdelta, gbtn->height, col);
-                  lbDisplay.DrawFlags &= ~(Lb_SPRITE_OUTLINE|0x0004);
+                  RendererClearDrawFlags((Lb_SPRITE_OUTLINE|0x0004));
               }
             }
             scr_pos_x += wdelta;
@@ -409,7 +410,7 @@ void draw_bonus_timer(void)
             width += (width / 8);
         }
     }
-    lbDisplay.DrawFlags = Lb_TEXT_HALIGN_CENTER;
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
     long scr_x = MyScreenWidth - width - 16 * units_per_pixel / 16;
     long scr_y = 16 * units_per_pixel / 16;
     if (game.armageddon_cast_turn != 0)
@@ -486,7 +487,7 @@ void draw_timer(void)
             }
         }
     }
-    lbDisplay.DrawFlags = Lb_TEXT_HALIGN_CENTER;
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
     long scr_x = MyScreenWidth - width - 16 * units_per_pixel / 16;
     long scr_y = 16 * units_per_pixel / 16;
     if ( (bonus_timer_enabled()) || (script_timer_enabled()) || (display_variable_enabled()) || (game.armageddon_cast_turn != 0) )
@@ -546,7 +547,7 @@ void draw_gameturn_timer(void)
             width += (width / 8);
         }
     }
-    lbDisplay.DrawFlags = Lb_TEXT_HALIGN_CENTER;
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
     long scr_x = MyScreenWidth - width - 16 * units_per_pixel / 16;
     long scr_y = MyScreenHeight - height - 16 * units_per_pixel / 16;
 
@@ -635,7 +636,7 @@ void draw_script_timer(PlayerNumber plyr_idx, unsigned char timer_id, unsigned l
         height *= 2;
         width *= 2;
     }
-    lbDisplay.DrawFlags = Lb_TEXT_HALIGN_CENTER;
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
     long scr_x = MyScreenWidth - width - 16 * units_per_pixel / 16;
     long scr_y = 16 * units_per_pixel / 16;
     if (game.armageddon_cast_turn != 0)
@@ -694,7 +695,7 @@ void draw_script_variable(PlayerNumber plyr_idx, unsigned char valtype, unsigned
             width += (width / 3);
         }
     }
-    lbDisplay.DrawFlags = Lb_TEXT_HALIGN_CENTER;
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
     long scr_x = MyScreenWidth - width - 16 * units_per_pixel / 16;
     long scr_y = 16 * units_per_pixel / 16;
     if (game.armageddon_cast_turn != 0)
@@ -735,7 +736,7 @@ void draw_consolelog()
 {
     draw_round_slab64k(0, 0, units_per_pixel, lbDisplay.GraphicsScreenWidth, (lbDisplay.GraphicsScreenHeight/2), ROUNDSLAB64K_DARK);
     LbTextSetFont(winfont);
-    lbDisplay.DrawFlags = Lb_TEXT_HALIGN_LEFT;
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_LEFT);
 
     int text_height = (consolelog_font_size * units_per_pixel) / LbTextLineHeight();
     int draw_ypos = text_height / 2; // Starting ypos
@@ -778,14 +779,14 @@ void draw_consolelog()
             totalLinesDrawn++;
         }
     }
-    lbDisplay.DrawFlags = Lb_TEXT_HALIGN_LEFT;
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_LEFT);
 }
 
 void draw_frametime()
 {
     char text[64];
     LbTextSetFont(winfont);
-    lbDisplay.DrawFlags = Lb_TEXT_HALIGN_RIGHT;
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_RIGHT);
     int tx_units_per_px = (11 * units_per_pixel) / LbTextLineHeight();
     if (tx_units_per_px < 16)
         tx_units_per_px = 16;
@@ -857,14 +858,14 @@ void draw_frametime()
             LbTextDrawResized(0, (iStartLine+i)*tx_units_per_px, tx_units_per_px, text);
     }
 
-    lbDisplay.DrawFlags = Lb_TEXT_HALIGN_LEFT;
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_LEFT);
 }
 
 void draw_network_stats()
 {
     char text[128];
     LbTextSetFont(winfont);
-    lbDisplay.DrawFlags = Lb_TEXT_HALIGN_RIGHT;
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_RIGHT);
     int tx_units_per_px = (11 * units_per_pixel) / LbTextLineHeight();
     if (tx_units_per_px < 16)
         tx_units_per_px = 16;
@@ -876,10 +877,11 @@ void draw_network_stats()
     unsigned int lost_packet_count = GetClientPacketsLost();
     unsigned int outgoing_rate_kb10 = (GetUploadRateBytesPerSecond() * 10) / 1024;
     unsigned int incoming_rate_kb10 = (GetDownloadRateBytesPerSecond() * 10) / 1024;
-    int32_t packet_misses;
-    TbClockMSec increase_countdown;
-    TbClockMSec decrease_countdown;
-    input_lag_get_stats(&packet_misses, &increase_countdown, &decrease_countdown);
+    int32_t increase_wait_time;
+    int32_t increase_turn_time;
+    int32_t decrease_wait_time;
+    int32_t decrease_sample_time;
+    input_lag_get_stats(&increase_wait_time, &increase_turn_time, &decrease_wait_time, &decrease_sample_time);
     int64_t turn_length_ns = 0;
     if (turns_per_second > 0) {
         turn_length_ns = 1000000000 / turns_per_second;
@@ -895,33 +897,32 @@ void draw_network_stats()
     LbTextDrawResized(0, tx_units_per_px, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Input lag: %d", game.input_lag_turns);
     LbTextDrawResized(0, tx_units_per_px * 2, tx_units_per_px, text);
-    snprintf(text, sizeof(text), "Packet waits: %d", packet_misses);
+    snprintf(text, sizeof(text), "Packet wait increase: %d/%dms in %dms", increase_wait_time,
+        increase_turn_time, INPUT_LAG_INCREASE_SAMPLE_MS);
     LbTextDrawResized(0, tx_units_per_px * 3, tx_units_per_px, text);
-    snprintf(text, sizeof(text), "Increase input lag: %dms", increase_countdown);
+    snprintf(text, sizeof(text), "Packet wait decrease: %d/%dms", decrease_wait_time, decrease_sample_time);
     LbTextDrawResized(0, tx_units_per_px * 4, tx_units_per_px, text);
-    snprintf(text, sizeof(text), "Decrease input lag: %dms", decrease_countdown);
-    LbTextDrawResized(0, tx_units_per_px * 5, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Download: %u.%u KB/s",
         incoming_rate_kb10 / 10, incoming_rate_kb10 % 10);
-    LbTextDrawResized(0, tx_units_per_px * 6, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * 5, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Upload: %u.%u KB/s",
         outgoing_rate_kb10 / 10, outgoing_rate_kb10 % 10);
-    LbTextDrawResized(0, tx_units_per_px * 7, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * 6, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Congestion: %u bytes", transit);
-    LbTextDrawResized(0, tx_units_per_px * 8, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * 7, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Loss rate: %u%%", packet_loss_percent);
-    LbTextDrawResized(0, tx_units_per_px * 9, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * 8, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Lost packets: %u", lost_packet_count);
-    LbTextDrawResized(0, tx_units_per_px * 10, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * 9, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Stutter: %dms", stutter_detection_current);
-    LbTextDrawResized(0, tx_units_per_px * 11, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * 10, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Average stutter: %dms", stutter_detection_average);
-    LbTextDrawResized(0, tx_units_per_px * 12, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * 11, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Max stutter: %dms", stutter_detection_max);
-    LbTextDrawResized(0, tx_units_per_px * 13, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * 12, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Turn length: %" PRId64, turn_length_ns);
-    LbTextDrawResized(0, tx_units_per_px * 14, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * 13, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Gameturn: %u", get_gameturn());
-    LbTextDrawResized(0, tx_units_per_px * 15, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * 14, tx_units_per_px, text);
 }
 /******************************************************************************/

@@ -17,6 +17,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "kfx/renderer/RendererManager.h"
 #include "front_landview.h"
 
 #include "globals.h"
@@ -40,6 +41,7 @@
 #include "config_keeperfx.h"
 #include "config_settings.h"
 #include "game_lghtshdw.h"
+#include "game_merge.h"
 #include "light_data.h"
 #include "lvl_filesdk1.h"
 #include "room_list.h"
@@ -55,6 +57,7 @@
 #include "front_input.h"
 #include "net_game.h"
 #include "keeperfx.hpp"
+#include "api.h"
 #include "post_inc.h"
 
 #ifdef __cplusplus
@@ -993,7 +996,7 @@ void process_zoom_palette(void)
     for (int i = 0; i < PALETTE_SIZE; i++) {
         palette[i] = frontend_palette[i] * remaining / half_length;
     }
-    LbPaletteSet(palette);
+    RendererPaletteSet(palette);
 }
 
 TbBool frontmap_update_zoom(void)
@@ -1016,8 +1019,8 @@ TbBool frontmap_update_zoom(void)
         if (map_info.state_trigger != FeSt_INITIAL)
         {
             frontend_set_state(map_info.state_trigger);
-            LbScreenClear(0);
-            LbScreenSwap();
+            RendererClearScreen(0);
+            RendererPresentFrame();
             map_info.state_trigger = FeSt_INITIAL;
             return true;
         }
@@ -1030,7 +1033,7 @@ TbBool frontmap_load(void)
 {
     SYNCDBG(4,"Starting");
     memset(scratch, 0, PALETTE_SIZE);
-    LbPaletteSet(scratch);
+    RendererPaletteSet(scratch);
     initialize_description_speech();
     mouse_over_lvnum = SINGLEPLAYER_NOTSTARTED;
     frontend_load_data_from_cd();
@@ -1094,6 +1097,7 @@ TbBool frontmap_load(void)
     fe_computer_players = 0;
     update_ensigns_visibility();
     SYNCDBG(7,"Finished");
+    api_event("CAMPAIGN_LOADED");
     return true;
 }
 
@@ -1217,7 +1221,7 @@ void draw_map_level_descriptions(void)
 {
   if ((fe_net_level_selected > 0) || (net_level_hilighted > 0))
   {
-    lbDisplay.DrawFlags = 0;
+    RendererSetDrawFlags(0);
     LevelNumber lvnum = fe_net_level_selected;
     if (lvnum <= 0)
       lvnum = net_level_hilighted;
