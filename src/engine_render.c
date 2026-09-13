@@ -4997,7 +4997,7 @@ void draw_fastview_mapwho(struct Camera *cam, struct BucketKindJontySprite *jspr
         || (thing->class_id == TCls_DeadCreature)
         || (player->work_state == PSt_QueryAll))
     {
-        if ((local_thing_under_hand == thing->index) && ((get_gameturn() % (4 * gui_blink_rate)) >= 2 * gui_blink_rate)) {
+        if ((local_state.local_thing_under_hand == thing->index) && ((get_gameturn() % (4 * gui_blink_rate)) >= 2 * gui_blink_rate)) {
             RendererAddDrawFlags(Lb_SPRITE_REMAP);
             lbSpriteReMapPtr = white_pal;
         } else {
@@ -5320,7 +5320,7 @@ void draw_status_sprites(long scrpos_x, long scrpos_y, struct Thing *thing)
     }
     if (flag_is_set(game.mode_flags,MFlg_NoHeroHealthFlower))
     {
-        if (local_thing_under_hand != thing->index) {
+        if (local_state.local_thing_under_hand != thing->index) {
             cctrl->thought_bubble_last_turn_drawn = get_gameturn();
             if (cctrl->force_health_flower_displayed == false)
             {
@@ -5402,7 +5402,7 @@ void draw_status_sprites(long scrpos_x, long scrpos_y, struct Thing *thing)
     else
     {
         // Determine if the creature is under the player's hand (being hovered over).
-        TbBool is_thing_under_hand = (local_thing_under_hand == thing->index);
+        TbBool is_thing_under_hand = (local_state.local_thing_under_hand == thing->index);
         // Check if the creature is an enemy and is visible.
         TbBool is_enemy_and_visible = players_are_enemies(player->id_number, thing->owner) && !creature_is_invisible(thing);
         // Check if the creature belongs to the player, is hurt but not unconscious.
@@ -8043,7 +8043,7 @@ void draw_jonty_mapwho(struct BucketKindJontySprite *jspr)
 
     if (!thing_is_invalid(thing))
     {
-        if ((local_thing_under_hand == thing->index) && ((get_gameturn() % (4 * gui_blink_rate)) >= 2 * gui_blink_rate)) {
+        if ((local_state.local_thing_under_hand == thing->index) && ((get_gameturn() % (4 * gui_blink_rate)) >= 2 * gui_blink_rate)) {
           struct Camera *active_cam = get_local_active_camera(player);
           if ((active_cam != NULL) && (active_cam->view_mode == PVM_IsoWibbleView || active_cam->view_mode == PVM_IsoStraightView))
           {
@@ -8064,7 +8064,7 @@ void draw_jonty_mapwho(struct BucketKindJontySprite *jspr)
                   }
                   else if (thing_is_trap_crate(dragtng))
                   {
-                      struct Thing *handthing = thing_get(local_thing_under_hand);
+                      struct Thing *handthing = thing_get(local_state.local_thing_under_hand);
                       if (thing_exists(handthing))
                       {
                           if (handthing->class_id == TCls_Trap)
@@ -8464,14 +8464,15 @@ static void update_frontview_pointed_block(unsigned long laaa, unsigned char qdr
     }
 }
 
-void create_frontview_map_volume_box(struct Camera *cam, unsigned char stl_width, TbBool single_subtile, long line_color)
+static long frontview_floor_line_bucket(long floor_z, long row_px, unsigned char stl_width)
+{
+    return floor_z - row_px - stl_width / 2;
+}
+
+void create_frontview_map_volume_box(struct Camera *cam, unsigned char stl_width, long line_color)
 {
     unsigned char orient = ((unsigned int)(cam->rotation_angle_x + DEGREES_45) / DEGREES_90) & 0x03;
-    // _depth_ is "how far in to the screen" the box goes - it will be the width/height of a slab
-    // _breadth_ is usually the same as the depth (a single slab), but for single subtile selection, this will be the width/height of a subtile
-    // (if we are dealing with a single subtile, breadth will be a third of the depth.)
     long depth = ((5 - map_volume_box.floor_height_z) * ((long)stl_width << 7) / 256);
-    long breadth = depth / (single_subtile ? STL_PER_SLB : 1);
     struct Coord3d pos;
     int32_t coord_x;
     int32_t coord_y;
@@ -8506,18 +8507,20 @@ void create_frontview_map_volume_box(struct Camera *cam, unsigned char stl_width
         coord_x -= box_width;
         break;
     }
-    coord_z -= (11 * (long)stl_width) >> 2;
-    // Draw 4 horizonal line elements
+    long floor_z = coord_z;
+    coord_z -= 7 * stl_width / 2;
+
     create_line_element(coord_x,             coord_y,                      coord_x + box_width, coord_y,                      coord_z,                          line_color);
     create_line_element(coord_x,             coord_y + box_height,         coord_x + box_width, coord_y + box_height,         coord_z - box_height,             line_color);
-    create_line_element(coord_x,             coord_y + depth,              coord_x + box_width, coord_y + depth,              coord_z,                          line_color);
-    create_line_element(coord_x,             coord_y + box_height + depth, coord_x + box_width, coord_y + box_height + depth, coord_z - box_height,             line_color);
-    // Now the lines at left and right
     create_line_element(coord_x,             coord_y,                      coord_x,             coord_y + box_height,         coord_z - box_height,             line_color);
     create_line_element(coord_x + box_width, coord_y,                      coord_x + box_width, coord_y + box_height,         coord_z - box_height,             line_color);
-    create_line_element(coord_x,             coord_y + breadth,            coord_x,             coord_y + box_height + depth, coord_z - box_height + stl_width, line_color);
-    create_line_element(coord_x + box_width, coord_y + breadth,            coord_x + box_width, coord_y + box_height + depth, coord_z - box_height + stl_width, line_color);
+    long near_bckt = frontview_floor_line_bucket(floor_z, box_height - stl_width, stl_width);
+    create_line_element(coord_x,             coord_y + depth,              coord_x + box_width, coord_y + depth,              frontview_floor_line_bucket(floor_z, 0, stl_width), line_color);
+    create_line_element(coord_x,             coord_y + box_height + depth - pixel_size, coord_x + box_width, coord_y + box_height + depth - pixel_size, near_bckt, line_color);
+    create_line_element(coord_x,             coord_y + box_height,         coord_x,             coord_y + box_height + depth, near_bckt,                        line_color);
+    create_line_element(coord_x + box_width, coord_y + box_height,         coord_x + box_width, coord_y + box_height + depth, near_bckt,                        line_color);
 }
+
 void create_fancy_frontview_map_volume_box(struct RoomSpace roomspace, struct Camera *cam, unsigned char stl_width, long color, TbBool show_outer_box)
 {
     long line_color = color;
@@ -8599,12 +8602,15 @@ void create_fancy_frontview_map_volume_box(struct RoomSpace roomspace, struct Ca
         }
         break;
     }
-    coord_z -= (11 * (long)stl_width) >> 2;
+    long floor_z = coord_z;
+    coord_z -= 7 * stl_width / 2;
     for (int roomspace_y = 0; roomspace_y < room_slab_height; roomspace_y += 1)
     {
         int y_start = (box_height * roomspace_y       / room_slab_height) + ((((box_height * roomspace_y)       % room_slab_height) >= room_slab_height) ? 1 : 0);
         int y_end =   (box_height * (roomspace_y + 1) / room_slab_height) + ((((box_height * (roomspace_y + 1)) % room_slab_height) >= room_slab_height) ? 1 : 0);
         int bckt_idx = coord_z - y_end;
+        int floor_far_bckt = frontview_floor_line_bucket(floor_z, y_start, stl_width);
+        int floor_near_bckt = frontview_floor_line_bucket(floor_z, y_end - stl_width, stl_width);
         for (int roomspace_x = 0; roomspace_x < room_slab_width; roomspace_x += 1)
         {
             int x_start = (box_width * roomspace_x       / room_slab_width) + ((((box_width * roomspace_x)       % room_slab_width) >= room_slab_width) ? 1 : 0);
@@ -8621,7 +8627,7 @@ void create_fancy_frontview_map_volume_box(struct RoomSpace roomspace, struct Ca
                     create_line_element(    coord_x + x_start, coord_y + y_start,         coord_x + x_start, coord_y + y_end,           bckt_idx,             line_color);
                     if (air_below)
                     {
-                        create_line_element(coord_x + x_start, coord_y + y_end,           coord_x + x_start, coord_y + y_end + depth,   bckt_idx + stl_width, line_color);
+                        create_line_element(coord_x + x_start, coord_y + y_end,           coord_x + x_start, coord_y + y_end + depth,   floor_near_bckt,      line_color);
                     }
                 }
                 if (air_right)
@@ -8629,18 +8635,18 @@ void create_fancy_frontview_map_volume_box(struct RoomSpace roomspace, struct Ca
                     create_line_element(    coord_x + x_end,   coord_y + y_start,         coord_x + x_end,   coord_y + y_end,           bckt_idx,             line_color);
                     if (air_below)
                     {
-                        create_line_element(coord_x + x_end,   coord_y + y_end,           coord_x + x_end,   coord_y + y_end + depth,   bckt_idx + stl_width, line_color);
+                        create_line_element(coord_x + x_end,   coord_y + y_end,           coord_x + x_end,   coord_y + y_end + depth,   floor_near_bckt,      line_color);
                     }
                 }
                 if (air_above)
                 {
                     create_line_element(    coord_x + x_start, coord_y + y_start,         coord_x + x_end,   coord_y + y_start,         bckt_idx,             line_color);
-                    create_line_element(    coord_x + x_start, coord_y + y_start + depth, coord_x + x_end,   coord_y + y_start + depth, bckt_idx,             line_color);
+                    create_line_element(    coord_x + x_start, coord_y + y_start + depth, coord_x + x_end,   coord_y + y_start + depth, floor_far_bckt,       line_color);
                 }
                 if (air_below)
                 {
                     create_line_element(    coord_x + x_start, coord_y + y_end,           coord_x + x_end,   coord_y + y_end,           bckt_idx,             line_color);
-                    create_line_element(    coord_x + x_start, coord_y + y_end + depth,   coord_x + x_end,   coord_y + y_end + depth,   bckt_idx,             line_color);
+                    create_line_element(    coord_x + x_start, coord_y + y_end + depth - pixel_size, coord_x + x_end, coord_y + y_end + depth - pixel_size, floor_near_bckt, line_color);
                 }
             }
             else if (!is_in_roomspace) //this handles "inside corners"
@@ -8652,14 +8658,14 @@ void create_fancy_frontview_map_volume_box(struct RoomSpace roomspace, struct Ca
                 {
                     if (room_below)
                     {
-                        create_line_element(coord_x + x_start,  coord_y + y_end,          coord_x + x_start, coord_y + y_end + depth,   bckt_idx,             line_color);
+                        create_line_element(coord_x + x_start,  coord_y + y_end,          coord_x + x_start, coord_y + y_end + depth,   floor_near_bckt,      line_color);
                     }
                 }
                 if (room_right)
                 {
                     if (room_below)
                     {
-                        create_line_element(coord_x + x_end,   coord_y + y_end,           coord_x + x_end,   coord_y + y_end + depth,   bckt_idx,             line_color);
+                        create_line_element(coord_x + x_end,   coord_y + y_end,           coord_x + x_end,   coord_y + y_end + depth,   floor_near_bckt,      line_color);
                     }
                 }
                 if (show_outer_box) // this handles the "outer line" (only when it is not in the roomspace)
@@ -8675,7 +8681,7 @@ void create_fancy_frontview_map_volume_box(struct RoomSpace roomspace, struct Ca
                         create_line_element(    coord_x + x_start, coord_y + y_start,         coord_x + x_start, coord_y + y_end,           bckt_idx,             line_color);
                         if (bottom_edge)
                         {
-                            create_line_element(coord_x + x_start, coord_y + y_end,           coord_x + x_start, coord_y + y_end + depth,   bckt_idx + stl_width, line_color);
+                            create_line_element(coord_x + x_start, coord_y + y_end,           coord_x + x_start, coord_y + y_end + depth,   floor_near_bckt,      line_color);
                         }
                     }
                     if (right_edge)
@@ -8683,18 +8689,18 @@ void create_fancy_frontview_map_volume_box(struct RoomSpace roomspace, struct Ca
                         create_line_element(    coord_x + x_end,   coord_y + y_start,         coord_x + x_end,   coord_y + y_end,           bckt_idx,             line_color);
                         if (bottom_edge)
                         {
-                            create_line_element(coord_x + x_end,   coord_y + y_end,           coord_x + x_end,   coord_y + y_end + depth,   bckt_idx + stl_width, line_color);
+                            create_line_element(coord_x + x_end,   coord_y + y_end,           coord_x + x_end,   coord_y + y_end + depth,   floor_near_bckt,      line_color);
                         }
                     }
                     if (top_edge)
                     {
                         create_line_element(    coord_x + x_start, coord_y + y_start,         coord_x + x_end,   coord_y + y_start,         bckt_idx,             line_color);
-                        create_line_element(    coord_x + x_start, coord_y + y_start + depth, coord_x + x_end,   coord_y + y_start + depth, bckt_idx,             line_color);
+                        create_line_element(    coord_x + x_start, coord_y + y_start + depth, coord_x + x_end,   coord_y + y_start + depth, floor_far_bckt,       line_color);
                     }
                     if (bottom_edge)
                     {
                         create_line_element(    coord_x + x_start, coord_y + y_end,           coord_x + x_end,   coord_y + y_end,           bckt_idx,             line_color);
-                        create_line_element(    coord_x + x_start, coord_y + y_end + depth,   coord_x + x_end,   coord_y + y_end + depth,   bckt_idx,             line_color);
+                        create_line_element(    coord_x + x_start, coord_y + y_end + depth - pixel_size, coord_x + x_end, coord_y + y_end + depth - pixel_size, floor_near_bckt, line_color);
                     }
                     line_color = map_volume_box.color; // switch back to default color (red/green) for the inner line
                 }
@@ -8720,7 +8726,7 @@ static void process_frontview_map_volume_box(struct Camera *cam, unsigned char s
         if (render_roomspace->is_roomspace_a_box)
         {
             // This is a basic square box
-             create_frontview_map_volume_box(cam, stl_width, render_roomspace->is_roomspace_a_single_subtile, line_color);
+             create_frontview_map_volume_box(cam, stl_width, line_color);
         }
         else
         {
@@ -8740,8 +8746,7 @@ static void process_frontview_map_volume_box(struct Camera *cam, unsigned char s
 
 TbBool cursor_on_room(RoomIndex room_index)
 {
-    struct PlayerInfo* player = get_my_player();
-    struct UserState* ustate = get_player_user_state(player);
+    struct UserState* ustate = get_local_user_state();
     struct SlabMap* slb = get_slabmap_for_subtile(ustate->cursor_subtile_x, ustate->cursor_subtile_y);
     if (slabmap_block_invalid(slb)) {
         return false;
@@ -8761,8 +8766,7 @@ TbBool room_is_damaged(RoomIndex room_index)
 }
 TbBool placing_same_room_type(RoomIndex room_index)
 {
-    struct PlayerInfo* player = get_my_player();
-    struct UserState* ustate = get_player_user_state(player);
+    struct UserState* ustate = get_local_user_state();
     if (map_volume_box.visible == 0) {
         return false;
     }

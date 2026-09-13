@@ -402,7 +402,7 @@ long net_comport_index_active;
 long net_speed_index_active;
 long net_number_of_players;
 long net_number_of_enum_players;
-long net_level_hilighted;
+long net_level_highlighted;
 struct NetMessage net_message[NET_MESSAGES_COUNT];
 long net_number_of_messages;
 long net_message_scroll_offset;
@@ -536,11 +536,11 @@ void create_message_box(const char *title, const char *line1, const char *line2,
 
 short game_is_busy_doing_gui(void)
 {
-    struct PlayerInfo *player = get_my_player();
+    struct UserState *ustate = get_local_user_state();
     if (battle_creature_over > 0) {
         return true;
     }
-    if (player->one_click_lock_cursor) {
+    if (ustate->one_click_lock_cursor) {
         return false;
     }
     if (!busy_doing_gui) {
@@ -1585,6 +1585,7 @@ short frontend_save_continue_game(short allow_lvnum_grow)
     unsigned short victory_state;
     short flg_mem;
     LevelNumber lvnum;
+    struct UserState *ustate = get_user_state(get_local_user());
     lvnum = get_loaded_level_number();
     SYNCDBG(6,"Starting");
     player = get_my_player();
@@ -1596,13 +1597,13 @@ short frontend_save_continue_game(short allow_lvnum_grow)
     // Save some of the data from clearing
     victory_state = player->victory_state;
     memcpy(scratch, &dungeon->lvstats, sizeof(struct LevelStats));
-    flg_mem = ((player->additional_flags & PlaAF_UnlockedLordTorture) != 0);
+    flg_mem = ((ustate->additional_flags & UsrAF_UnlockedLordTorture) != 0);
     // clear all data
     clear_game_for_save();
     // Restore saved data
     player->victory_state = victory_state;
     memcpy(&dungeon->lvstats, scratch, sizeof(struct LevelStats));
-    set_flag_value(player->additional_flags, PlaAF_UnlockedLordTorture, flg_mem);
+    set_flag_value(ustate->additional_flags, UsrAF_UnlockedLordTorture, flg_mem);
     // Only save continue if level was won, not a free play level, not a multiplayer level and not in packet mode
     if (network_is_active()
      || ((game.operation_flags & GOF_SingleLevel) != 0)
@@ -2136,6 +2137,42 @@ MenuNumber create_menu(struct GuiMenu *gmnu)
     SYNCDBG(18,"Created menu ID %d at slot %d, pos (%d,%d) size (%d,%d)",(int)gmnu->ident,
         (int)mnu_num,(int)amnu->pos_x,(int)amnu->pos_y,(int)amnu->width,(int)amnu->height);
     return mnu_num;
+}
+
+/** Saves `current` as the value to put back when a hold ends. Holding again
+ *  keeps the first saved value, unless the value was put back in between (an
+ *  exit that skipped the restore). */
+static void begin_map_ui_hold(TbBool* held, TbBool* saved, TbBool current)
+{
+    if (current || !*held)
+        *saved = current;
+    *held = true;
+}
+
+/** Hides the status menu and turns tooltips off for the map and its fades, or
+ *  puts them back. Each argument is the state wanted from this call on. */
+void set_map_ui_hidden(TbBool status_menu, TbBool tooltips)
+{
+    if (status_menu)
+    {
+        begin_map_ui_hold(&local_state.status_menu_hidden_for_map, &local_state.status_menu_restore, toggle_status_menu(0));
+    }
+    else if (local_state.status_menu_hidden_for_map)
+    {
+        toggle_status_menu(local_state.status_menu_restore);
+        local_state.status_menu_hidden_for_map = false;
+    }
+
+    if (tooltips)
+    {
+        begin_map_ui_hold(&local_state.tooltips_hidden_for_map, &local_state.tooltips_restore, settings.tooltips_on);
+        settings.tooltips_on = false;
+    }
+    else if (local_state.tooltips_hidden_for_map)
+    {
+        settings.tooltips_on = local_state.tooltips_restore;
+        local_state.tooltips_hidden_for_map = false;
+    }
 }
 
 /**
@@ -3637,6 +3674,7 @@ FrontendMenuState get_menu_state_when_back_from_substate(FrontendMenuState subst
 FrontendMenuState get_startup_menu_state(void)
 {
   struct PlayerInfo *player;
+  struct UserState *ustate = get_user_state(get_local_user());
   LevelNumber lvnum;
   if (game_flags2 & GF2_Server)
   {
@@ -3697,9 +3735,9 @@ FrontendMenuState get_startup_menu_state(void)
     if (network_is_active())
     { // If played real network game, then resulting screen isn't changed based on victory
         SYNCLOG("Network game summary state selected");
-        if ((player->additional_flags & PlaAF_UnlockedLordTorture) != 0)
+        if ((ustate->additional_flags & UsrAF_UnlockedLordTorture) != 0)
         { // Player has won - go FeSt_TORTURE before any others
-          player->additional_flags &= ~PlaAF_UnlockedLordTorture;
+          ustate->additional_flags &= ~UsrAF_UnlockedLordTorture;
           return FeSt_TORTURE;
         } else
         if ((player->display_flags & PlaF6_PlyrHasQuit) == 0)
@@ -3734,9 +3772,9 @@ FrontendMenuState get_startup_menu_state(void)
             {
                 return FeSt_OUTRO;
             } else
-            if ((player->additional_flags & PlaAF_UnlockedLordTorture) != 0)
+            if ((ustate->additional_flags & UsrAF_UnlockedLordTorture) != 0)
             {
-                player->additional_flags &= ~PlaAF_UnlockedLordTorture;
+                ustate->additional_flags &= ~UsrAF_UnlockedLordTorture;
                 return FeSt_DRAG;
             } else
             {
