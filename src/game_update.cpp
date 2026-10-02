@@ -270,7 +270,7 @@ static void process_dungeons(void)
 {
   SYNCDBG(7,"Starting");
   check_players_lost();
-  resolve_standins();
+  resolve_placeholders();
   process_dungeon_power_magic();
   process_dungeon_devastation_effects();
   process_entrance_generation();
@@ -537,7 +537,7 @@ void update(void)
         creature_stats_debug_dump();
 #endif
         game.play_gameturn++;
-        if (game.turns_packetoff == game.play_gameturn)
+        if (replay.turns_packetoff == game.play_gameturn)
             exit_keeper = 1;
     }
 

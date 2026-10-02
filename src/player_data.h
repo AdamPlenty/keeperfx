@@ -42,7 +42,7 @@ extern "C" {
 
 enum PlayerInitFlags {
     PlaF_Allocated               = 0x01,
-    PlaF_StandIn                 = 0x02, /**< Human user disconnected, replaced by a computer > */
+    PlaF_Placeholder             = 0x02, /**< Human user disconnected, replaced by a computer > */
     PlaF_CompCtrl                = 0x40,
 };
 
@@ -208,6 +208,11 @@ struct PlayerInfo {
     GameTurn display_objective_turn;
     uint32_t isometric_view_zoom_level;
     uint32_t frontview_zoom_level;
+    int32_t zoom_distance;
+    int32_t frontview_zoom_distance;
+    TbBool cheats_allowed;
+    TbBool skip_heart_zoom;
+    uint8_t highlight_mode;
     unsigned char hand_idx;
     struct RoomSpace render_roomspace;
     struct RoomSpace roomspace;

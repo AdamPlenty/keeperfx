@@ -60,6 +60,7 @@
 #include "vidmode.h"
 #include "kjm_input.h"
 #include "packets.h"
+#include "replay.h"
 #include "config.h"
 #include "config_slabsets.h"
 #include "config_strings.h"
@@ -862,8 +863,9 @@ void reinit_level_after_load(void)
     local_state.lens_palette = 0;
     local_state.main_palette = engine_palette;
     init_navigation();
-    reinit_packets_after_load();
     game.easter_eggs_enabled = start_params.easter_egg;
+    if (!network_is_active() && !replay.load_enable)
+        get_my_player()->cheats_allowed = game.easter_eggs_enabled;
     parchment_loaded = 0;
     for (i=0; i < PLAYERS_COUNT; i++)
     {
@@ -992,7 +994,7 @@ void clear_players_for_save(void)
       player->player_type = saved_player_type;
       set_flag_value(player->allocflags, PlaF_Allocated, ((saved_allocation_flags & PlaF_Allocated) != 0));
       set_flag_value(player->allocflags, PlaF_CompCtrl, ((saved_allocation_flags & PlaF_CompCtrl) != 0));
-      set_flag_value(player->allocflags, PlaF_StandIn, ((saved_allocation_flags & PlaF_StandIn) != 0));
+      set_flag_value(player->allocflags, PlaF_Placeholder, ((saved_allocation_flags & PlaF_Placeholder) != 0));
       memcpy(&player->cameras[CamIV_FirstPerson],&cammem,sizeof(struct Camera));
       set_player_active_camera(player, CamIV_FirstPerson);
     }
@@ -1324,9 +1326,10 @@ short complete_level(struct PlayerInfo *player)
     SYNCDBG(6,"Starting");
     if (!is_my_player(player))
         return false;
-    if (network_is_active())
+    if (game.game_kind == GKind_MultiGame)
     {
-        LbNetwork_Stop();
+        if (network_is_active())
+            LbNetwork_Stop();
         quit_game = 1;
         return true;
     }
@@ -1371,7 +1374,7 @@ void update_local_mouse_light(void)
     if (player->instance_num != PI_Unset)
         return;
     // ... or when watching a replay
-    if (game.packet_load_enable)
+    if (replay.load_enable)
         return;
     // ... or during text input (save menu)
     if (game_is_busy_doing_gui_string_input())

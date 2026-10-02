@@ -18,6 +18,7 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "packets.h"
+#include "replay.h"
 #include "net_input_lag.h"
 #include "net_checksums.h"
 #include "net_lobby.h"
@@ -259,7 +260,7 @@ static int32_t resync_attempt_count = 0;
 
 TbBool is_desync_warning_active(void)
 {
-    return resync_attempt_count >= RESYNC_LIMIT_BEFORE_COOLDOWN && (game.system_flags & (GSF_NetGameNoSync | GSF_NetSeedNoSync)) != 0;
+    return resync_attempt_count >= RESYNC_LIMIT_BEFORE_COOLDOWN && (local_system_flags & (GSF_NetGameNoSync | GSF_NetSeedNoSync)) != 0;
 }
 
 static TbBool resync_game_allowed(void)
@@ -561,7 +562,7 @@ void process_camera_view_controls(struct Camera* cam, const struct Packet* pckt,
             break;
         }
     }
-    const int32_t zoom_min = max(CAMERA_ZOOM_MIN, zoom_distance_setting);
+    const int32_t zoom_min = (cam->view_mode == PVM_FrontView) ? player->frontview_zoom_distance : max(CAMERA_ZOOM_MIN, player->zoom_distance);
     const int32_t zoom_max = CAMERA_ZOOM_MAX;
     const TbBool use_zoom_pos = flag_is_set(pckt->control_flags, PCtr_ViewZoomPos | PCtr_MapCoordsValid);
     const MapCoord zoom_x = use_zoom_pos ? pckt->pos_x : -1;
@@ -625,7 +626,7 @@ void process_user_dungeon_control_packet_control(NetUserId user)
     // A parchment map jump's controls were made on the parchment, not for the dungeon camera it jumps.
     if (pckt->action != PckA_ZoomFromMap)
         process_camera_controls(cam, pckt, player);
-    if (is_my_player(player)) {
+    if (is_my_player(player) && !replay.load_enable) {
         TbBool settings_changed = false;
         if ((pckt->control_flags & (PCtr_ViewTiltUp | PCtr_ViewTiltDown | PCtr_ViewTiltReset)) != 0) {
             settings.isometric_tilt = cam->rotation_angle_y;
@@ -745,7 +746,7 @@ TbBool process_user_global_packet_action(NetUserId user)
         turn_off_all_menus();
         free_swipe_graphic();
       }
-      if (network_is_active()) {
+      if (game.game_kind == GKind_MultiGame) {
         if (victory_state == VicS_WonLevel) {
           player->victory_state = VicS_WonLevel;
           if (game.conf.rules[player->id_number].gameplay.winner_tortures_loser) {
@@ -786,8 +787,6 @@ TbBool process_user_global_packet_action(NetUserId user)
       return 0;
       }
   case PckA_PlyrMsgEnd:
-      process_gameplay_chat_message(player->user_id, player->mp_pending_message);
-      player->mp_pending_message[0] = '\0';
       return 0;
   case PckA_PlyrMsgClear:
       get_user_state(user)->init_flags &= ~UsrIF_NewMPMessage;
@@ -801,7 +800,7 @@ TbBool process_user_global_packet_action(NetUserId user)
       }
       return 1;
   case PckA_SwitchScrnRes:
-      if (is_my_player(player))
+      if (is_my_player(player) && !replay.load_enable)
       {
           switch_to_next_video_mode_wrapper();
       }
@@ -817,14 +816,14 @@ TbBool process_user_global_packet_action(NetUserId user)
       }
       return 0;
   case PckA_ChangeWindowSize:
-      if (is_my_player(player))
+      if (is_my_player(player) && !replay.load_enable)
       {
         change_engine_window_relative_size(pckt->actn_par1, pckt->actn_par2);
         centre_engine_window();
       }
       return 0;
   case PckA_SetGammaLevel:
-      if (is_my_player(player))
+      if (is_my_player(player) && !replay.load_enable)
       {
         set_gamma(pckt->actn_par1, 1);
         save_settings();
@@ -1060,7 +1059,8 @@ TbBool process_user_global_packet_action(NetUserId user)
     }
     case PckA_RoomspaceHighlightToggle:
     {
-        if (is_my_player(player))
+        player->highlight_mode = pckt->actn_par1;
+        if (is_my_player(player) && !replay.load_enable)
         {
             settings.highlight_mode = pckt->actn_par1;
             if (default_tag_mode == 3)
@@ -1147,6 +1147,8 @@ void process_user_packet(NetUserId user)
         return;
     }
     SYNCDBG(6, "Processing user %d packet of type %d.", user, (int)pckt->action);
+    if (flag_is_set(game.operation_flags, GOF_Paused))
+        replay_record_paused_action(user, pckt);
     struct UserState* ustate = get_user_state(user);
     ustate->input_crtr_control = ((pckt->additional_packet_values & PCAdV_CrtrContrlPressed) != 0);
     ustate->input_crtr_query = ((pckt->additional_packet_values & PCAdV_CrtrQueryPressed) != 0);
@@ -1563,6 +1565,8 @@ void process_user_creature_control_packet_action(NetUserId user)
       }
       break;
   case PckA_CheatCtrlCrtrSetInstnc:
+      if (!player->cheats_allowed)
+        break;
       thing = thing_get(player->controlled_thing_idx);
       if (!thing_exists(thing))
         break;
@@ -1645,17 +1649,20 @@ void exchange_packets(void)
 
     MULTIPLAYER_LOG("process_packets: === BEGIN turn=%lu ===", (unsigned long)get_gameturn());
     const NetUserId local_user = get_local_user();
-    input_lag_update(get_local_packet());
-    set_local_packet_turn();
-    update_turn_checksums();
+    if (!replay.load_enable)
+    {
+        input_lag_update(get_local_packet());
+        set_local_packet_turn();
+        update_turn_checksums();
+    }
     update_local_dig_tag_prediction();
-    if (!game.packet_load_enable)
+    if (!replay.load_enable)
         camera_packet_set_state(get_local_packet());
     store_packet_history(local_user, get_local_packet());
     host_spoof_dropped_user_packets();
-    if (game.game_kind != GKind_LocalGame)
+    if (network_is_active())
     {
-        if (!game.packet_load_enable)
+        if (!replay.load_enable)
         {
             struct Packet* my_packet = get_local_packet();
             const char* player_name = (local_user == SERVER_ID) ? "Host" : "Client";
@@ -1681,29 +1688,48 @@ void exchange_packets(void)
     }
 
     if (network_is_active() && checksums_different()) {
-        set_flag(game.system_flags, GSF_NetGameNoSync);
-        clear_flag(game.system_flags, GSF_NetSeedNoSync);
+        set_flag(local_system_flags, GSF_NetGameNoSync);
+        clear_flag(local_system_flags, GSF_NetSeedNoSync);
     } else {
-        clear_flag(game.system_flags, GSF_NetGameNoSync);
-        clear_flag(game.system_flags, GSF_NetSeedNoSync);
+        clear_flag(local_system_flags, GSF_NetGameNoSync);
+        clear_flag(local_system_flags, GSF_NetSeedNoSync);
     }
 }
 
 /**
  * Process all packets influencing local game state.
  */
+void clear_users_button_state(void)
+{
+    for (NetUserId user = 0; user < MAX_NET_USERS; user++)
+    {
+        struct UserState *ustate = get_user_state(user);
+        if (user_state_invalid(ustate))
+            continue;
+        ustate->cursor_button_down = 0;
+        ustate->interpolated_tagging = false;
+    }
+}
+
 void process_packets(void)
 {
+    if (!replay.load_enable && flag_is_set(game.operation_flags, GOF_Paused))
+        clear_users_button_state();
+    process_queued_chat_messages();
+    if (replay.load_enable)
+        verify_replay_checksum();
     // Write packets into file, if requested
-    if ((game.packet_save_enable) && (game.packet_fopened)) {
+    if ((replay.save_enable) && (replay.fopened) && !flag_is_set(game.operation_flags, GOF_Paused)) {
         save_packets();
+    } else {
+        replay_forget_saved_turn();
     }
     //Debug code, to find packet errors
     #if DEBUG_NETWORK_PACKETS
     write_debug_packets();
     #endif
     // Process the packets
-    for (NetUserId user = 0; user < PACKETS_COUNT; user++)
+    for (NetUserId user = 0; (user < PACKETS_COUNT) && !replay_playback_is_paused(); user++)
     {
         const PlayerNumber plyr_idx = get_net_user_player_number(user);
         if (plyr_idx < 0) {
@@ -1721,13 +1747,15 @@ void process_packets(void)
         return;
     }
     if (network_is_active()
-     && ((game.system_flags & (GSF_NetGameNoSync | GSF_NetSeedNoSync)) != 0))
+     && ((local_system_flags & (GSF_NetGameNoSync | GSF_NetSeedNoSync)) != 0))
     {
         if (resync_game_allowed()) {
             SYNCDBG(0,"Resyncing");
             resync_game();
         }
     }
+    if (replay.load_enable)
+        replay_apply_pending_resync();
     get_current_stutter_milliseconds();
     MULTIPLAYER_LOG("process_packets: === END turn=%lu ===", (unsigned long)get_gameturn());
     SYNCDBG(7,"Finished");
