@@ -189,7 +189,7 @@ TbBool defined_keys_that_have_been_swapped[GAME_KEYS_COUNT] = { false };
 static void get_button_snapping_inputs(void)
 {
     struct PlayerInfo* player = get_my_player();
-    if (player->view_type == PVT_CreatureContrl)
+    if (get_player_view_type(player) == PVT_CreatureContrl)
         return;
 
     TbControllerButtons snapbtns = get_game_key_controller_buttons(Gkey_ButtonSnapRight)|get_game_key_controller_buttons(Gkey_ButtonSnapLeft)|get_game_key_controller_buttons(Gkey_ButtonSnapUp)|get_game_key_controller_buttons(Gkey_ButtonSnapDown);
@@ -457,9 +457,13 @@ void update_mouse(void)
  */
 short is_key_pressed(TbKeyCode key, TbKeyMods kmodif)
 {
-  if ((kmodif == KMod_DONTCARE) || (kmodif == key_modifiers))
-    return lbKeyOn[key];
-  return 0;
+    if (((kmodif == KMod_DONTCARE) || (kmodif == key_modifiers)) && lbKeyOn[key] != 0) {
+        return lbKeyOn[key];
+    }
+    if ((kmodif == KMod_DONTCARE) || (kmodif == (lbKeyPressed[key] & (KMod_SHIFT | KMod_CONTROL | KMod_ALT)))) {
+        return lbKeyPressed[key];
+    }
+    return 0;
 }
 
 /**
@@ -479,6 +483,7 @@ void clear_key_pressed(long key)
         }
     }
     lbKeyOn[key] = 0;
+    lbKeyPressed[key] = 0;
     if (key == lbInkey)
     {
         lbInkey = KC_UNASSIGNED;

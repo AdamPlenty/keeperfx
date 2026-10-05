@@ -18,6 +18,7 @@
 /******************************************************************************/
 #include "pre_inc.h"
 #include "game_saves.h"
+#include "ariadne_update.h"
 
 #include "globals.h"
 #include "bflib_basics.h"
@@ -73,7 +74,7 @@ short const VersionBuild    = VER_BUILD;
 const char *legacy_campaign_progress="fx1contn.sav";
 const char *continue_filename="fx1lastf.sav"; // (merely points to another save file)
 const char *saved_game_filename="fx1g%04d.sav";
-const char *packet_filename="fx1rp%04d.pck";
+const char *packet_filename="fx1rp%04d.fxpkt";
 
 /* Dynamically-grown savegame catalogue (see game_saves.h): holds one CatalogueEntry per
  * reachable save slot. It is sized on load to (highest existing slot + 2), min
@@ -661,6 +662,7 @@ TbBool load_game(long slot_num)
     // the current session's custom bank layout.
     sound_manager_reapply_creature_sounds();
     snprintf(game.campaign_fname, sizeof(game.campaign_fname), "%s", campaign.fname);
+    init_navigation();
     reinit_level_after_load();
     reinit_packets_after_load();
     initialize_packet_history();
