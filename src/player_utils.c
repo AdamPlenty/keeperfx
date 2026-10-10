@@ -841,15 +841,18 @@ void init_user_state(NetUserId user)
     }
 }
 
+void init_local_player_state(void)
+{
+    local_state.minimap_pos_x = 11;
+    local_state.minimap_pos_y = 11;
+    local_state.roomspace_size = DEFAULT_USER_ROOMSPACE_WIDTH;
+}
+
 void init_player(struct PlayerInfo *player, short no_explore)
 {
     SYNCDBG(5,"Starting");
-    if (is_my_player(player))
-    {
-        local_state.minimap_pos_x = 11;
-        local_state.minimap_pos_y = 11;
-        local_state.minimap_zoom = settings.minimap_zoom;
-        local_state.roomspace_size = DEFAULT_USER_ROOMSPACE_WIDTH;
+    if (is_my_player(player)) {
+        init_local_player_state();
         setup_engine_window(0, 0, MyScreenWidth, MyScreenHeight);
         local_state.main_palette = engine_palette;
     }
@@ -858,13 +861,9 @@ void init_player(struct PlayerInfo *player, short no_explore)
     struct UserState *ustate = get_player_user_state(player);
     if (!user_state_invalid(ustate))
     {
-        player->roomspace_highlight_mode = ustate->highlight_mode;
-        player->roomspace_mode = ustate->highlight_mode;
+        player->roomspace_highlight_mode = ustate->prefs[UPref_StartingHighlightMode];
+        player->roomspace_mode = ustate->prefs[UPref_StartingHighlightMode];
     }
-    player->zoom_distance = zoom_distance_setting;
-    player->frontview_zoom_distance = frontview_zoom_distance_setting;
-    player->cheats_allowed = game.easter_eggs_enabled;
-    player->skip_heart_zoom = get_skip_heart_zoom_feature();
     if (is_my_player(player))
     {
         if (default_tag_mode != 3)
@@ -891,9 +890,6 @@ void init_player(struct PlayerInfo *player, short no_explore)
         }
         break;
     case GKind_MultiGame:
-        //workaround until settings are synced through multiplayer
-        if (is_my_player(player))
-            local_state.minimap_zoom = 256;
         if (!is_active_keeper(player))
         {
           ERRORLOG("Non Keeper in Keeper game");
@@ -960,7 +956,7 @@ int32_t user_get_visibility_bounds(NetUserId user, MapCoord *x, MapCoord *y)
         return default_radius;
     }
     default:
-        if (ustate->dungeon_camera.use_front_view)
+        if (ustate->prefs[UPref_FrontView] != 0)
             return SHRT_MAX - (clamp(dcam.zoom[true], FRONTVIEW_CAMERA_ZOOM_MIN, FRONTVIEW_CAMERA_ZOOM_MAX) / 3);
         return SHRT_MAX - (2 * clamp(dcam.zoom[false], CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX));
     }
@@ -1213,17 +1209,6 @@ TbBool get_starting_highlight_mode(void)
     return settings.highlight_mode;
 }
 
-static void init_user_preferences_from_settings(NetUserId user)
-{
-    struct UserState *ustate = get_user_state(user);
-    ustate->dungeon_wibble = true;
-    rotate_mode_to_dungeon_view(settings.video_rotate_mode, &ustate->dungeon_camera.use_front_view, &ustate->dungeon_wibble);
-    ustate->dungeon_camera.pitch = settings.isometric_tilt;
-    ustate->dungeon_camera.zoom[false] = settings.isometric_view_zoom_level;
-    ustate->dungeon_camera.zoom[true] = settings.frontview_zoom_level;
-    ustate->highlight_mode = get_starting_highlight_mode();
-}
-
 void init_players_local_game(void)
 {
     SYNCDBG(4,"Starting");
@@ -1239,12 +1224,11 @@ void init_players_local_game(void)
     }
 
     init_user_state(player->user_id);
-    init_user_preferences_from_settings(player->user_id);
+    UserPreferences prefs;
+    build_local_user_preferences(prefs);
+    apply_user_preferences(player->user_id, prefs, UPF_NewGame);
     init_player(player, 0);
-    set_creature_tendencies(player, CrTend_Imprison, IMPRISON_BUTTON_DEFAULT);
-    set_creature_tendencies(player, CrTend_Flee, FLEE_BUTTON_DEFAULT);
-    game.creatures_tend_imprison = IMPRISON_BUTTON_DEFAULT;
-    game.creatures_tend_flee = FLEE_BUTTON_DEFAULT;
+    apply_user_start_tendencies(player);
 }
 
 void process_player_states(void)
@@ -1446,18 +1430,8 @@ void set_player_colour(PlayerNumber plyr_idx, unsigned char colour_idx)
                     break;
                 }
             }
-            // Refresh GUI panel button sprites for local player. Workaround for multiplayer.
             if (plyr_idx == my_player_number) {
-                for (int btn_idx = 0; btn_idx < ACTIVE_BUTTONS_COUNT; btn_idx++) {
-                    struct GuiButton *gbtn = &active_buttons[btn_idx];
-                    if ((gbtn->flags & LbBtnF_Active) == 0) {continue;}
-                    struct GuiMenu *gmnu = get_active_menu(gbtn->gmenu_idx);
-                    if (gmnu == NULL) {continue;}
-                    struct GuiButtonInit *gbinit = get_gui_button_init(gmnu, gbtn->id_num);
-                    if (gbinit != NULL && gbinit->sprite_idx != 0) {
-                        gbtn->sprite_idx = get_player_colored_icon_idx(gbinit->sprite_idx, my_player_number);
-                    }
-                }
+                update_gui_button_player_colors();
             }
         }
     }

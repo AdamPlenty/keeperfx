@@ -25,6 +25,7 @@
 #include "bflib_video.h"
 #include "roomspace.h"
 #include "net_main.h"
+#include "user_prefs.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,6 +38,10 @@ extern "C" {
 #define INVALID_USER_STATE (&bad_user_state)
 
 #define PLAYER_MP_MESSAGE_LEN  64
+
+#define MINIMAP_ZOOM_MIN       128
+#define MINIMAP_ZOOM_DEFAULT   256
+#define MINIMAP_ZOOM_MAX       2048
 
 #define WANDER_POINTS_COUNT    200
 
@@ -193,10 +198,6 @@ struct PlayerInfo {
     GameTurn power_of_cooldown_turn;
     int32_t game_version;
     GameTurn display_objective_turn;
-    int32_t zoom_distance;
-    int32_t frontview_zoom_distance;
-    TbBool cheats_allowed;
-    TbBool skip_heart_zoom;
     unsigned char hand_idx;
     struct RoomSpace render_roomspace;
     struct RoomSpace roomspace;
@@ -257,10 +258,8 @@ struct UserState {
     PowerKind chosen_power_kind;
     TbBool pickup_all_gold;
     unsigned char view_type;
-    TbBool dungeon_wibble;
-    TbBool highlight_mode;
-    unsigned char map_fade_turns; // Length of the current parchment map fade in turns, from the packet that started it
     struct DungeonCamera dungeon_camera;
+    UserPreferences prefs;
 };
 
 /******************************************************************************/
@@ -320,7 +319,6 @@ extern struct LocalState {
     short engine_window_y;
     short minimap_pos_x;
     short minimap_pos_y;
-    unsigned short minimap_zoom;
     int roomspace_size;
     // FIXME: use fixed-point precision instead
     float camera_movement_x;
@@ -329,11 +327,10 @@ extern struct LocalState {
     TbBool camera_rotate_cw;
     TbBool camera_rotate_ccw;
     TbBool camera_rotate_around_cursor;
-    // freecam. TODO: use spectator implementation instead, once that is implemented
-    TbBool replay_detached;
-    unsigned char replay_view_type;
-    unsigned char replay_cam_idx;
     struct LocalCameraState camera;
+    TbBool observer_camera_active;
+    unsigned char observer_camera_view_type;
+    unsigned char observer_camera_idx;
 } local_state;
 
 extern unsigned short player_colors_map[];
@@ -348,7 +345,8 @@ extern struct UserState bad_user_state;
 /******************************************************************************/
 struct PlayerInfo *get_player_f(PlayerNumber plyr_idx,const char *func_name);
 #define get_player(plyr_idx) get_player_f(plyr_idx,__func__)
-#define get_my_player() get_player_f(my_player_number,__func__)
+struct PlayerInfo *get_my_player(void);
+const struct PlayerInfo *get_displayed_player(void);
 TbBool player_invalid(const struct PlayerInfo *player);
 TbBool player_exists(const struct PlayerInfo *player);
 TbBool is_active_keeper(const struct PlayerInfo *player);
@@ -356,8 +354,11 @@ TbBool is_my_player(const struct PlayerInfo *player);
 struct UserState *get_user_state(NetUserId user);
 struct UserState *get_player_user_state(const struct PlayerInfo *player);
 struct UserState *get_local_user_state(void);
+uint32_t get_local_minimap_zoom(void);
 TbBool user_state_invalid(const struct UserState *ustate);
+int32_t user_zoom_min(const struct UserState *ustate, TbBool front_view);
 TbBool is_my_player_number(PlayerNumber plyr_num);
+TbBool is_player_displayed(PlayerNumber plyr_num);
 TbBool player_allied_with(const struct PlayerInfo *player, PlayerNumber ally_idx);
 TbBool players_are_enemies(PlayerNumber plyr1_idx, PlayerNumber plyr2_idx);
 TbBool players_are_mutual_allies(PlayerNumber plyr1_idx, PlayerNumber plyr2_idx);

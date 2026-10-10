@@ -61,11 +61,11 @@ enum TbPacketAction {
         PckA_SwitchScrnRes,
         PckA_TogglePause,
         PckA_UnusedSlot023,
-        PckA_SetCluedo,
+        PckA_SetUserPref,
         PckA_ChangeWindowSize,//25
         PckA_BookmarkLoad,
         PckA_SetGammaLevel,
-        PckA_SetMinimapConf,
+        PckA_UnusedSlot028,
         PckA_SetMapRotation,
         PckA_UnusedSlot030,//30
         PckA_UnusedSlot031,
@@ -349,7 +349,12 @@ int32_t camera_move_rate(const struct Camera* cam, const struct PlayerInfo* play
 void process_camera_action(struct Camera cams[], const struct Packet* pckt);
 void process_first_person_look(struct Thing *thing, int32_t turn_x, int32_t turn_y, int32_t current_horizontal, int32_t current_vertical, int32_t *out_horizontal, int32_t *out_vertical, int32_t *out_roll);
 TbBool can_process_creature_input(struct Thing *thing);
-void exchange_packets(void);
+enum PacketExchangeResult {
+    PExR_Advance,
+    PExR_Wait,
+};
+
+enum PacketExchangeResult exchange_packets(void);
 void process_packets(void);
 TbBool is_desync_warning_active(void);
 void set_local_packet_turn(void);

@@ -69,6 +69,7 @@
 #include "engine_textures.h"
 
 #define BOOKMARKS_COUNT               5
+#define GAME_FAST_FORWARD_MAX           512
 
 #ifdef __cplusplus
 extern "C" {
@@ -226,7 +227,6 @@ struct Game {
     unsigned char view_mode_flags; //flags in enum GameNumfieldDFlags
     unsigned char flags_gui;
     unsigned char mode_flags;
-    TbBool easter_eggs_enabled;
     unsigned char eastegg01_cntr;
     unsigned char eastegg02_cntr;
     char music_track; // cdrom / default music track to resume after load
@@ -309,7 +309,7 @@ struct Game {
     struct PerExpLevelValues creature_scores[CREATURE_TYPES_MAX];
     struct Bookmark bookmark[BOOKMARKS_COUNT];
     struct CreaturePool pool;
-    int32_t frame_skip;
+    int32_t fast_forward;
     TbBool frame_step;
     TbBool paused_at_gameturn;
     GameTurnDelta pay_day_progress[PLAYERS_COUNT];

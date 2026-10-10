@@ -17,6 +17,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "observer.h"
 #include "player_instances.h"
 
 #include "globals.h"
@@ -166,7 +167,7 @@ static int32_t instance_elapsed_turns(const struct PlayerInfo *player, unsigned 
 static void set_local_leave_creature_camera(struct PlayerInfo *player, unsigned char inum, TbBool snap)
 {
     const struct UserState *ustate = get_player_user_state(player);
-    if (ustate->dungeon_camera.use_front_view)
+    if (ustate->prefs[UPref_FrontView] != 0)
         return;
     struct DungeonCamera pose = ustate->dungeon_camera;
     const int32_t dungeon_zoom = pose.zoom[false];
@@ -190,7 +191,7 @@ static void set_local_heart_zoom_out_camera(struct PlayerInfo *player, TbBool sn
     struct DungeonCamera pose = ustate->dungeon_camera;
     const int32_t total_turns = player_instance_info[PI_HeartZoomOut].length_turns;
     const int32_t elapsed = instance_elapsed_turns(player, PI_HeartZoomOut);
-    if (!ustate->dungeon_camera.use_front_view && thing_exists(heart) && (elapsed < total_turns))
+    if (ustate->prefs[UPref_FrontView] == 0 && thing_exists(heart) && (elapsed < total_turns))
     {
         const int32_t start_zoom = 24000;
         pose.zoom[false] = start_zoom - elapsed * ((start_zoom - pose.zoom[false]) / total_turns);
@@ -444,7 +445,7 @@ long pinstfm_control_creature(struct PlayerInfo *player, int32_t *n)
         set_player_instance(player, PI_Unset, true);
         return 0;
     }
-    if (!ustate->dungeon_camera.use_front_view)
+    if (ustate->prefs[UPref_FrontView] == 0)
         step_local_possession_camera(player, thing);
     return 0;
 }
@@ -666,7 +667,7 @@ long pinstfs_zoom_out_of_heart(struct PlayerInfo *player, int32_t *n)
     set_player_mode(player, PVT_DungeonTop);
     struct UserState* ustate = get_player_user_state(player);
     struct DungeonCamera* cam = &ustate->dungeon_camera;
-    const TbBool front_view = ustate->dungeon_camera.use_front_view;
+    const TbBool front_view = ustate->prefs[UPref_FrontView] != 0;
     thing = get_player_soul_container(player->id_number);
     if (!thing_exists(thing))
     {
@@ -709,7 +710,7 @@ long pinstfe_zoom_out_of_heart(struct PlayerInfo *player, int32_t *n)
   if (is_my_player(player)) {
     LbPaletteStopOpenFade();
   }
-  if (!ustate->dungeon_camera.use_front_view)
+  if (ustate->prefs[UPref_FrontView] == 0)
     set_local_camera_destination(player);
   turn_user_cursor_light(player->user_id, true);
   ustate->init_flags &= ~UsrIF_KeyboardInputDisabled;
@@ -835,8 +836,9 @@ long pinstfs_zoom_to_position(struct PlayerInfo *player, int32_t *n)
     ustate->init_flags |= UsrIF_KeyboardInputDisabled;
     player->instance_remain_turns = zoom_to_position_turns(player);
     set_view_position(&ustate->dungeon_camera.x, &ustate->dungeon_camera.y, player->zoom_to_pos_x, player->zoom_to_pos_y);
-    if (is_my_player(player) && !replay_camera_detached())
+    if (is_my_player(player) && !is_observer_camera_active()) {
         move_local_camera_to_position(player->zoom_to_pos_x, player->zoom_to_pos_y);
+    }
     return 0;
 }
 
@@ -862,8 +864,11 @@ void set_player_instance(struct PlayerInfo *player, long ninum, TbBool force)
     long inum = player->instance_num;
     if (inum >= PLAYER_INSTANCES_COUNT)
         inum = 0;
-    if ((inum == 0) || (player_instance_info[inum].instance_state != 1) || (force))
-    {
+    if ((inum == 0) || (player_instance_info[inum].instance_state != 1) || (force)) {
+        if (player == &local_observer_player && ninum == PI_ZoomToPos) {
+            observer_camera_jump(coord_subtile(player->zoom_to_pos_x), coord_subtile(player->zoom_to_pos_y));
+            return;
+        }
         player->instance_num = ninum%PLAYER_INSTANCES_COUNT;
         struct PlayerInstanceInfo* inst_info = &player_instance_info[player->instance_num];
         player->instance_remain_turns = inst_info->length_turns;
@@ -920,7 +925,7 @@ void leave_creature_as_controller(struct PlayerInfo *player, struct Thing *thing
     if (((thing->owner != player->id_number) && (player->work_state != PSt_FreeCtrlDirect))
       || (thing->index != player->controlled_thing_idx))
     {
-        set_player_instance(player, PI_Unset, 1);
+        set_player_instance(player, PI_Unset, false);
         set_player_mode(player, PVT_DungeonTop);
         ustate->init_flags &= ~UsrIF_CreaturePassengerMode;
         update_engine_view(player, false);
@@ -970,7 +975,7 @@ void leave_creature_as_passenger(struct PlayerInfo *player, struct Thing *thing)
   if (((thing->owner != player->id_number) && (player->work_state != PSt_FreeCtrlPassngr))
     || (thing->index != player->controlled_thing_idx))
   {
-    set_player_instance(player, PI_Unset, 1);
+    set_player_instance(player, PI_Unset, false);
     set_player_mode(player, PVT_DungeonTop);
     ustate->init_flags &= ~UsrIF_CreaturePassengerMode;
     update_engine_view(player, false);

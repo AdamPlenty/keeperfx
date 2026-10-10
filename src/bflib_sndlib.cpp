@@ -32,6 +32,7 @@
 #include <atomic>
 #include <cmath>
 
+#include "keeperfx.hpp"
 #include "post_inc.h"
 
 namespace {
@@ -961,7 +962,7 @@ extern "C" void StopAllSamples() {
 
 extern "C" TbBool InitAudio(const SoundSettings * settings) {
 	try {
-		if (game.easter_eggs_enabled == true) {
+		if (start_params.easter_egg == true) {
 			TbDate date;
 			LbDate(&date);
 			g_bb_king_mode |= ((date.Day == 1) && (date.Month == 2));
@@ -1186,7 +1187,7 @@ extern "C" SoundMilesID play_sample(
 				return source.mss_id;
 			}
 		}
-		if (game.frame_skip < 2) {
+		if (game.fast_forward < 2) {
 			ERRORLOG("Can't play sample %d, too many samples playing at once", smptbl_id);
 		}
 		return 0;
