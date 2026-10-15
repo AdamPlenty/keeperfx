@@ -16,6 +16,7 @@
  */
 /******************************************************************************/
 #include "pre_inc.h"
+#include "net_spectator.h"
 #include "replay.h"
 #include "packets.h"
 #include "net_game.h"
@@ -559,6 +560,7 @@ enum LongTurnReplayRecordKind {
     LTK_PausedAction = 3, // payload: uint16_t user, uint8_t action, int32_t par1, int32_t par2, int16_t par3, int16_t par4
     LTK_Resync = 4, // payload: the resync message as sent by the host (its header, then zlib-compressed data)
     LTK_NetworkStopped = 5, // no payload: lost the host, continued locally
+    LTK_SpectatorNotice = 6, // payload: uint8_t joined, uint8_t icon, spectator name (NUL-terminated)
     // TODO: resyncs / state transfers?
     // Could also carry cheat menu buttons, API actions, etc.
 };
@@ -654,6 +656,14 @@ static TbBool read_long_turn_records(TbBool apply)
             return false;
         }
         uint32_t used = 0;
+        if (apply && kind == LTK_SpectatorNotice) {
+            char notice[2 + sizeof(netstate.users[0].name)];
+            if (len > sizeof(notice) || !read_packet_bytes(notice, len)
+             || process_network_spectator_notice(SERVER_ID, notice, len) != Lb_OK) {
+                return false;
+            }
+            used = len;
+        }
         const TbBool is_command = (kind == LTK_ChatCommand);
         if (apply && ((kind == LTK_ChatMessage) || is_command) && (len >= sizeof(uint16_t) + (is_command ? 2 * sizeof(int32_t) : 0)))
         {
@@ -1037,6 +1047,13 @@ void replay_record_chat_message(NetUserId user, const char *message, MapCoord cu
     replay_write_record(is_command ? LTK_ChatCommand : LTK_ChatMessage, payload, len);
 }
 
+void replay_record_spectator_notice(const char *notice, size_t size)
+{
+    if (replay.save_enable && replay.fopened) {
+        replay_write_record(LTK_SpectatorNotice, notice, size);
+    }
+}
+
 static TbBool packet_recorded_while_paused(const struct Packet *pckt)
 {
     switch (pckt->action)
@@ -1376,6 +1393,7 @@ TbBool open_new_packet_file_for_save(void)
     replay.head.level_num = get_loaded_level_number();
     replay.head.players_exist = 0;
     replay.head.players_comp = 0;
+    replay.head.players_seat = 0;
     replay_long_turn_open = false;
     reset_packet_codec();
     replay.head.flags = PSHF_Compressed;
@@ -1411,6 +1429,8 @@ TbBool open_new_packet_file_for_save(void)
             set_flag(replay.head.players_exist, to_flag(i));
             if ((player->allocflags & PlaF_CompCtrl) != 0)
               set_flag(replay.head.players_comp, to_flag(i));
+            if (player_is_seat(player))
+              set_flag(replay.head.players_seat, to_flag(i));
         }
     }
     set_replay_crashlog(1, get_gameturn());

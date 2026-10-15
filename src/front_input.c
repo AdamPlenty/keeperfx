@@ -504,7 +504,7 @@ static void get_interface_inputs(void)
     clear_key_pressed(KC_ESCAPE);
     if (a_menu_window_is_active()) {
         turn_off_all_window_menus();
-    } else if ((game.operation_flags & GOF_ShowGui) == 0) {
+    } else if (!local_state.show_gui) {
         set_gui_visible(true);
     } else {
         if (menu_is_active(GMnu_MAIN)) {
@@ -548,33 +548,33 @@ static TbBool check_if_mouse_is_over_button(const struct GuiButton *gbtn)
 
 static void clip_frame_skip(void)
 {
-  if (game.fast_forward > GAME_FAST_FORWARD_MAX)
-    game.fast_forward = GAME_FAST_FORWARD_MAX;
-  if (game.fast_forward < 0)
-    game.fast_forward = 0;
+  if (local_state.fast_forward > GAME_FAST_FORWARD_MAX)
+    local_state.fast_forward = GAME_FAST_FORWARD_MAX;
+  if (local_state.fast_forward < 0)
+    local_state.fast_forward = 0;
 }
 
 static void change_frameskip(int32_t direction)
 {
     if (direction > 0) {
-        if (game.fast_forward <= 1) {
-            game.fast_forward = 2;
+        if (local_state.fast_forward <= 1) {
+            local_state.fast_forward = 2;
         } else {
-            game.fast_forward <<= 1;
+            local_state.fast_forward <<= 1;
         }
-    } else if (game.fast_forward <= 2) {
-        game.fast_forward = 0;
+    } else if (local_state.fast_forward <= 2) {
+        local_state.fast_forward = 0;
     } else {
-        game.fast_forward >>= 1;
+        local_state.fast_forward >>= 1;
     }
     clip_frame_skip();
     char speed_txt[256];
-    if (game.fast_forward > 0) {
-        snprintf(speed_txt, sizeof(speed_txt), "x%d", game.fast_forward);
+    if (local_state.fast_forward > 0) {
+        snprintf(speed_txt, sizeof(speed_txt), "x%d", local_state.fast_forward);
     } else {
         snprintf(speed_txt, sizeof(speed_txt), "%s", get_string(GUIStr_FastForwardNormal));
     }
-    show_onscreen_msg(turns_per_second*(game.fast_forward+1), get_string(GUIStr_FastForward), speed_txt);
+    show_onscreen_msg(turns_per_second*(local_state.fast_forward+1), get_string(GUIStr_FastForward), speed_txt);
 }
 
 /**
@@ -645,8 +645,27 @@ static TbBool wheel_reserved_by_menu(void)
         || menu_is_active(GMnu_LOAD) || menu_is_active(GMnu_SAVE);
 }
 
+static TbBool cursor_entered_panning_edge(void)
+{
+    static TbBool cursor_was_at_edge = false;
+    TbBool cursor_at_edge = false;
+    if (get_local_view_type(get_my_player()) == PVT_DungeonTop && IsMouseInsideWindow() && !is_feature_on(Ft_DisableCursorCameraPanning)) {
+        const int32_t edge_scrolling_border = max(4, scale_fixed_DK_value(4));
+        const int32_t mouse_x = GetMouseX();
+        const int32_t mouse_y = GetMouseY();
+        cursor_at_edge = (mouse_x <= edge_scrolling_border) || (mouse_x >= MyScreenWidth - edge_scrolling_border)
+         || (mouse_y <= edge_scrolling_border) || (mouse_y >= MyScreenHeight - edge_scrolling_border);
+    }
+    const TbBool entered_edge = cursor_at_edge && !cursor_was_at_edge;
+    cursor_was_at_edge = cursor_at_edge;
+    return entered_edge;
+}
+
 static TbBool observer_camera_input_pressed(void)
 {
+    if (cursor_entered_panning_edge()) {
+        return true;
+    }
     if ((wheel_scrolled_up || wheel_scrolled_down) && !wheel_reserved_by_menu()) {
         return true;
     }
@@ -663,7 +682,7 @@ static TbBool observer_camera_input_pressed(void)
             return true;
         }
     }
-    if (left_button_clicked && ((game.operation_flags & GOF_ShowGui) != 0)) {
+    if (left_button_clicked && local_state.show_gui) {
         long x;
         long y;
         long zoom;
@@ -764,7 +783,7 @@ static int32_t get_small_map_inputs(int32_t x, int32_t y, int32_t zoom, struct P
     if (!grabbed_small_map) {
         game.small_map_state = 0;
     }
-    if (((game.operation_flags & GOF_ShowGui) != 0 && mouse_is_over_panel_map(x, y))
+    if ((local_state.show_gui && mouse_is_over_panel_map(x, y))
      || clicked_on_small_map || grabbed_small_map) {
         if (left_button_clicked) {
             clicked_on_small_map = 1;
@@ -1086,7 +1105,7 @@ static TbBool get_level_lost_inputs(void)
         if (player->instance_num != PI_MapFadeFrom)
         {
           turn_off_all_window_menus();
-          set_flag_value(game.operation_flags, GOF_ShowPanel, (game.operation_flags & GOF_ShowGui) != 0);
+          local_state.show_panel = local_state.show_gui;
           if (parchment_map_fade_enabled())
           {
                 set_players_packet_action(player, PckA_SetViewType, PVT_MapFadeIn, 0, 0, 0);
@@ -1105,7 +1124,7 @@ static TbBool get_level_lost_inputs(void)
         inp_done = menu_is_active(GMnu_SPELL_LOST);
         if ( !inp_done )
         {
-          if ((game.operation_flags & GOF_ShowGui) != 0)
+          if (local_state.show_gui)
           {
             initialise_tab_tags_and_menu(GMnu_SPELL);
             turn_off_all_panel_menus();
@@ -1167,7 +1186,7 @@ static TbBool get_level_lost_inputs(void)
       case PVT_MapScreen:
         if (menu_is_active(GMnu_SPELL_LOST))
         {
-          if ((game.operation_flags & GOF_ShowGui) != 0)
+          if (local_state.show_gui)
             turn_off_menu(GMnu_SPELL_LOST);
         }
         break;
@@ -1691,8 +1710,7 @@ static short get_creature_control_action_inputs(void)
             right_button_released = 0;
             if ((player->possession_lock == true) && thing_is_creature(thing))
             {
-                if (is_my_player(player))
-                    play_non_3d_sample(snd_refusal); //refusal
+                play_player_sample(player->id_number, snd_refusal); //refusal
             }
             else
             {
@@ -2658,10 +2676,46 @@ static void get_map_nonaction_inputs(void)
     }
 }
 
+static void clear_mouse_button_states(void)
+{
+    left_button_clicked = 0;
+    left_button_released = 0;
+    right_button_clicked = 0;
+    right_button_released = 0;
+}
+
+static TbBool get_observer_camera_click_inputs(void)
+{
+    TbBool camera_active = is_observer_camera_active();
+    if ((!left_button_released && !right_button_released) || (camera_active && game_is_busy_doing_gui())) {
+        return false;
+    }
+    struct PlayerInfo *player = get_my_player();
+    if (!observer_query_input()) {
+        if (get_local_view_type(player) == PVT_MapScreen && left_button_released) {
+            int32_t map_x;
+            int32_t map_y;
+            if (point_to_overhead_map(get_local_active_camera(player), GetMouseX() / pixel_size, GetMouseY() / pixel_size, &map_x, &map_y)) {
+                detach_observer_camera();
+                observer_camera_jump(coord_subtile(map_x), coord_subtile(map_y));
+            }
+        } else if (camera_active) {
+            return_to_player_camera();
+        } else if (right_button_released) {
+            observer_cycle_player(-1);
+        } else {
+            observer_cycle_player(1);
+        }
+    }
+    clear_mouse_button_states();
+    return true;
+}
+
 static short get_observer_inputs(void)
 {
     struct PlayerInfo *player = get_my_player();
     struct UserState *ustate = get_local_user_state();
+    observer_update_query();
     if ((ustate->init_flags & UsrIF_NewMPMessage) != 0) {
         get_players_message_inputs();
         return true;
@@ -2680,7 +2734,7 @@ static short get_observer_inputs(void)
     }
     const unsigned char view_type = get_local_view_type(player);
     if (view_type == PVT_DungeonTop) {
-        if ((game.operation_flags & GOF_ShowGui) != 0 && menu_is_active(GMnu_SPELL_LOST)) {
+        if (local_state.show_gui && menu_is_active(GMnu_SPELL_LOST)) {
             initialise_tab_tags_and_menu(GMnu_QUERY);
             turn_off_all_panel_menus();
             turn_on_menu(GMnu_QUERY);
@@ -2694,30 +2748,7 @@ static short get_observer_inputs(void)
             get_observer_camera_inputs();
             return true;
         }
-        if (view_type == PVT_MapScreen && !game_is_busy_doing_gui() && left_button_released) {
-            int32_t map_x;
-            int32_t map_y;
-            TbBool map_valid = point_to_overhead_map(get_local_active_camera(player), GetMouseX() / pixel_size, GetMouseY() / pixel_size, &map_x, &map_y);
-            left_button_clicked = 0;
-            left_button_released = 0;
-            if (map_valid) {
-                detach_observer_camera();
-                observer_camera_jump(coord_subtile(map_x), coord_subtile(map_y));
-            }
-            return true;
-        }
-        if (!game_is_busy_doing_gui() && (left_button_released || right_button_released)) {
-            if (right_button_released) {
-                observer_cycle_player(-1);
-            } else if (is_observer_camera_active()) {
-                return_to_player_camera();
-            } else {
-                detach_observer_camera();
-            }
-            left_button_clicked = 0;
-            left_button_released = 0;
-            right_button_clicked = 0;
-            right_button_released = 0;
+        if (get_observer_camera_click_inputs()) {
             return true;
         }
         get_observer_camera_inputs();
@@ -3308,10 +3339,7 @@ short get_gui_inputs(short gameplay_on)
   if (gameplay_on && observer_is_active() && a_menu_window_is_active()
    && !game_is_busy_doing_gui() && (left_button_released || right_button_released)) {
       turn_off_all_window_menus();
-      left_button_clicked = 0;
-      left_button_released = 0;
-      right_button_clicked = 0;
-      right_button_released = 0;
+      clear_mouse_button_states();
       result = true;
   }
   input_gameplay_tooltips(gameplay_on);

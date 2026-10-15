@@ -48,6 +48,7 @@ extern "C" {
 enum PlayerInitFlags {
     PlaF_Allocated               = 0x01,
     PlaF_Placeholder             = 0x02, /**< Human user disconnected, replaced by a computer > */
+    PlaF_Seat                    = 0x04, /**< Playable by a human: includes humans (and placeholders), and lobby-assigned computers > */
     PlaF_CompCtrl                = 0x40,
 };
 
@@ -312,7 +313,7 @@ extern struct LocalState {
     TbBool swipe_sprite_drawLR; /**< Used to decide whether to draw the swipe sprite left to right (TRUE), or [default] right to left (FALSE). */
     unsigned char *lens_palette;
     unsigned char *main_palette;
-    int32_t palette_fade_step_map;
+    TbBool map_fade_prepared;
     int32_t palette_fade_step_pain;
     int32_t palette_fade_step_possession;
     short engine_window_width;
@@ -333,6 +334,12 @@ extern struct LocalState {
     TbBool observer_camera_active;
     unsigned char observer_camera_view_type;
     unsigned char observer_camera_idx;
+    int32_t fast_forward;
+    long double process_turn_time;
+    float delta_time;
+    uint32_t time_delta;
+    TbBool show_gui;
+    TbBool show_panel;
 } local_state;
 
 extern unsigned short player_colors_map[];
@@ -360,7 +367,6 @@ uint32_t get_local_minimap_zoom(void);
 TbBool user_state_invalid(const struct UserState *ustate);
 int32_t user_zoom_min(const struct UserState *ustate, TbBool front_view);
 TbBool is_my_player_number(PlayerNumber plyr_num);
-TbBool is_player_displayed(PlayerNumber plyr_num);
 TbBool player_allied_with(const struct PlayerInfo *player, PlayerNumber ally_idx);
 TbBool players_are_enemies(PlayerNumber plyr1_idx, PlayerNumber plyr2_idx);
 TbBool players_are_mutual_allies(PlayerNumber plyr1_idx, PlayerNumber plyr2_idx);

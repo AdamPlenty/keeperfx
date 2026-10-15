@@ -317,8 +317,7 @@ TbBool player_sell_room_at_subtile(long plyr_idx, long stl_x, long stl_y)
         dungeon->camera_deviate_jump = 192;
     }
     delete_room_slab(subtile_slab(stl_x), subtile_slab(stl_y), 0);
-    if (is_my_player_number(plyr_idx))
-        play_non_3d_sample(snd_tile_sell);
+    play_player_sample(plyr_idx, snd_tile_sell);
     if (revenue != 0)
     {
         struct Coord3d pos;
@@ -771,6 +770,9 @@ static TbBool process_observer_global_packet_action(void)
         process_user_leave_game_packet(get_local_user());
         return true;
     default:
+        if (observer_process_packet_action(pckt)) {
+            return true;
+        }
         return process_local_packet_action(get_my_player(), get_local_user_state(), pckt);
     }
 }
@@ -937,7 +939,7 @@ TbBool process_user_global_packet_action(NetUserId user)
       } else
       {
         if (get_local_user() == user)
-          toggle_status_menu((game.operation_flags & GOF_ShowPanel) != 0);
+          toggle_status_menu(local_state.show_panel);
         set_user_view_type(user, PVT_DungeonTop);
       }
       return 0;
@@ -1747,7 +1749,7 @@ enum PacketExchangeResult exchange_packets(void)
         if (spectator && network_is_active()) {
             enum PacketExchangeResult result = network_spectator_load_turn(packet_checksum);
             if (result == PExR_Wait) {
-                game.process_turn_time = 0;
+                local_state.process_turn_time = 0;
                 observer_store_packets(NULL);
                 update_local_cameras();
                 clear_packets();
