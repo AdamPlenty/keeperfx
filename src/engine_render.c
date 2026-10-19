@@ -63,7 +63,7 @@
 #include "keeperfx.hpp"
 #include "kjm_input.h"
 #include "player_instances.h"
-#include "roomspace_prediction.h"
+#include "roomspace_input.h"
 #include "slab_data.h"
 #include "sprites.h"
 #include "thing_stats.h"
@@ -2732,7 +2732,7 @@ static void process_isometric_map_volume_box(long x, long y, long z, PlayerNumbe
     unsigned char line_color = default_color;
     struct PlayerInfo* current_player = get_player(plyr_idx);
     struct UserState* ustate = get_local_user_state();
-    struct RoomSpace *render_roomspace = get_local_dig_prediction_render_roomspace(&ustate->render_roomspace);
+    const struct RoomSpace *render_roomspace = get_dig_prediction_render_roomspace(&ustate->render_roomspace);
     // Check if a roomspace is currently being built
     // and if so feed this back to the user
     if ((current_player->roomspace.is_active) && ((ustate->work_state == PSt_Sell) || (ustate->work_state == PSt_BuildRoom)))
@@ -4446,7 +4446,7 @@ static void do_a_plane_of_engine_columns_cluedo(long stl_x, long stl_y, long pla
     {
         struct Map *cur_mapblk;
         cur_mapblk = get_map_block_at(stl_x + xaval + xidx, stl_y);
-        unsigned char render_map_flags = get_local_dig_prediction_render_flags(stl_x + xaval + xidx, stl_y, cur_mapblk->flags);
+        unsigned char render_map_flags = get_dig_prediction_render_flags(stl_x + xaval + xidx, stl_y, cur_mapblk->flags);
         // Get solidmasks of sibling columns
         unsigned short solidmsk_cur_raw;
         unsigned short solidmsk_cur;
@@ -4653,7 +4653,7 @@ static void do_a_plane_of_engine_columns_isometric(long stl_x, long stl_y, long 
     {
         struct Map *cur_mapblk;
         cur_mapblk = get_map_block_at(stl_x + xaval + xidx, stl_y);
-        unsigned char render_map_flags = get_local_dig_prediction_render_flags(stl_x + xaval + xidx, stl_y, cur_mapblk->flags);
+        unsigned char render_map_flags = get_dig_prediction_render_flags(stl_x + xaval + xidx, stl_y, cur_mapblk->flags);
         // Get column to be drawn
         const struct Column *cur_colmn;
         cur_colmn = unrev_colmn;
@@ -5363,8 +5363,6 @@ void draw_status_sprites(long scrpos_x, long scrpos_y, struct Thing *thing)
         w = (base_size * spr->SWidth * bs_units_per_px / 16) >> 13;
         h = (base_size * spr->SHeight * bs_units_per_px / 16) >> 13;
         LbSpriteDrawScaled(scrpos_x - w / 2, scrpos_y - h, spr, w, h);
-        spr = get_button_sprite_for_player(state_spridx, thing->owner);
-        h_add += spr->SHeight * bs_units_per_px / 16;
     }
     else if (state_spridx)
     {
@@ -5372,7 +5370,12 @@ void draw_status_sprites(long scrpos_x, long scrpos_y, struct Thing *thing)
         w = (base_size * spr->SWidth * bs_units_per_px / 16) >> 13;
         h = (base_size * spr->SHeight * bs_units_per_px / 16) >> 13;
         LbSpriteDrawScaled(scrpos_x - w / 2, scrpos_y - h, spr, w, h);
-        h_add += h;
+    }
+    // The flower goes above the state icon whichever of the state and anger icons blinks in, so it doesn't jump
+    if (state_spridx || anger_spridx)
+    {
+        spr = state_spridx ? get_button_sprite_for_player(state_spridx, thing->owner) : get_button_sprite(anger_spridx);
+        h_add += (base_size * spr->SHeight * bs_units_per_px / 16) >> 13;
     }
 
     if ((thing->lair.spr_size > 0) && (health_spridx > 0) && ((get_gameturn() % (2 * gui_blink_rate)) >= gui_blink_rate))
@@ -8729,7 +8732,7 @@ static void process_frontview_map_volume_box(struct Camera *cam, unsigned char s
     unsigned char line_color = default_color;
     struct PlayerInfo* current_player = get_player(plyr_idx);
     struct UserState* ustate = get_local_user_state();
-    struct RoomSpace *render_roomspace = get_local_dig_prediction_render_roomspace(&ustate->render_roomspace);
+    const struct RoomSpace *render_roomspace = get_dig_prediction_render_roomspace(&ustate->render_roomspace);
     // Check if a roomspace is currently being built
     // and if so feed this back to the user
     if ((current_player->roomspace.is_active) && ((ustate->work_state == PSt_Sell) || (ustate->work_state == PSt_BuildRoom)))

@@ -20,6 +20,7 @@
 #include "game_legacy.h"
 #include "gui_frontmenu.h"
 #include "gui_frontbtns.h"
+#include "gui_parchment.h"
 #include "gui_soundmsgs.h"
 #include "kjm_input.h"
 #include "local_camera.h"
@@ -257,6 +258,17 @@ static void observer_shift_view_camera(void)
     set_view_position(&dcam->x, &dcam->y, move_coord_with_angle_x(dcam->x, distance, angle), move_coord_with_angle_y(dcam->y, distance, angle));
 }
 
+void observer_snap_view_camera(void)
+{
+    struct PlayerInfo *player = get_my_player();
+    if ((observer_get_view_cursor() == NULL) || (get_local_view_type(player) != PVT_DungeonTop)) {
+        return;
+    }
+    observer_update_view();
+    set_local_camera_destination_pose(player, &local_observer_user_state.dungeon_camera);
+    snap_local_camera_to_destination();
+}
+
 static TbBool observer_cursor_to_screen(const struct ObserverCursor *cursor, int32_t *screen_x, int32_t *screen_y)
 {
     if (cursor->has_viewport_center_offset) {
@@ -418,15 +430,15 @@ void observer_update_view(void)
         }
         view_type = ustate->view_type;
     }
-    if (view_type == PVT_MapFadeIn) {
-        view_type = PVT_MapScreen;
-    } else if (view_type == PVT_MapFadeOut) {
-        view_type = PVT_DungeonTop;
-    }
     if (view_type == PVT_DungeonTop) {
         observer_shift_view_camera();
     }
     if (local_observer_user_state.view_type != view_type) {
+        const TbBool map_toggled = (local_observer_user_state.view_type == PVT_MapScreen && view_type == PVT_DungeonTop)
+            || (local_observer_user_state.view_type == PVT_DungeonTop && view_type == PVT_MapScreen);
+        if (map_toggled && !is_observer_camera_active()) {
+            start_local_map_fade(view_type);
+        }
         local_observer_user_state.view_type = view_type;
         local_state.view_type = view_type;
         turn_off_query_menus();

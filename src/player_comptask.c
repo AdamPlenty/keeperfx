@@ -2204,7 +2204,7 @@ TbBool find_next_gold(struct Computer2 *comp, struct ComputerTask *ctask)
     do
     {
         dig_result = tool_dig_to_pos2(comp, &cdig, true, ToolDig_BasicOnly); // actions are simulated
-        SYNCDBG(5,"retval=%d, dig.distance=%ld, dig.calls_count=%ld",
+        SYNCDBG(5,"retval=%d, dig.distance=%" PRId32 ", dig.calls_count=%" PRId32,
             dig_result, cdig.distance, cdig.calls_count);
     } while (dig_result == TDR_DigSlab); // loop until we have reached our destination, or an error has occurred
 
@@ -2676,7 +2676,8 @@ struct Thing *find_creature_for_pickup(struct Computer2 *comp, struct Coord3d *p
                     }
                 } else
                 {
-                    if (grid_distance(thing->mappos.x.stl.num, thing->mappos.y.stl.num, stl_x, stl_y) >= 2)
+                    if ((grid_distance(thing->mappos.x.stl.num, thing->mappos.y.stl.num, stl_x, stl_y) >= 2)
+                      && ((cctrl->dropped_turn + COMPUTER_REDROP_DELAY) < get_gameturn()))
                     {
                         if (best_score) {
                             score = get_creature_thing_score(thing);

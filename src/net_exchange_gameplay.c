@@ -35,6 +35,7 @@
 #include "player_data.h"
 #include "net_game.h"
 #include "packets.h"
+#include "roomspace_input.h"
 #include "lua_triggers.h"
 #include "keeperfx.hpp"
 #include <zlib.h>
@@ -206,7 +207,6 @@ void process_gameplay_chat_message(NetUserId user, const char *message, MapCoord
     PlayerNumber plyr_idx = get_net_user_player_number(user);
     struct PlayerInfo *player = prepare_network_chat_message(plyr_idx, message);
     if (message[0] != '\0') {
-        SYNCLOG("Gameplay chat from user %d (player %d): %s", (int)user, (int)plyr_idx, message);
         lua_on_chatmsg(plyr_idx, player->mp_message_text);
         const TbBool shown = (player->mp_message_text[0] != cmd_char) || !cmd_exec(plyr_idx, player->mp_message_text + 1, cursor_x, cursor_y) || network_is_active();
         if (shown) {
@@ -248,6 +248,9 @@ void store_packet_history(NetUserId user, const struct Packet *packet)
     struct Packet *entry = &packet_history[user].entries[packet->turn % PACKET_HISTORY_SIZE];
     if (!is_packet_empty(entry) && (GameTurnDelta)(entry->turn - packet->turn) > 0) {
         return;
+    }
+    if (user != netstate.my_id && network_user_active(user) && (is_packet_empty(entry) || entry->turn != packet->turn)) {
+        input_lag_note_packet_arrival(packet->turn);
     }
     *entry = *packet;
 }
@@ -347,6 +350,7 @@ void initialize_packet_history(void)
     next_repair_history_user = 0;
     network_spectator_reset();
     input_lag_reset();
+    reset_dig_prediction();
 }
 
 static TbBool user_has_required_turn_packets(NetUserId user)
@@ -507,7 +511,6 @@ static TbError wait_for_missing_packets(void *server_buf, size_t frame_size, Net
         }
     }
     TbClockMSec wait_time = LbTimerClock() - wait_start_time;
-    input_lag_note_packet_wait((int32_t)wait_time);
     if (wait_timed_out) {
         WARNLOG("LbNetwork_ExchangeGameplay: Timed out waiting for turn=%lu after %dms; continuing so resync can recover",
             (unsigned long)expected_turn, (int32_t)wait_time);

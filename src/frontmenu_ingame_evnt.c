@@ -44,6 +44,7 @@
 #include "net_spectator.h"
 #include "frontend.h"
 #include "front_input.h"
+#include "kjm_input.h"
 #include "vidfade.h"
 #include "game_legacy.h"
 #include "map_events.h"
@@ -51,10 +52,12 @@
 #include "sprites.h"
 #include "timer.h"
 #include "replay_rewind.h"
+#include "vidmode.h"
 
 #include "keeperfx.hpp"
 #include "post_inc.h"
 
+#define HIGHLIGHTED_TEXT_FADE_LEVEL 48
 extern int32_t multiplayer_speed_adjustment_ns;
 
 unsigned long TimerTurns = 0;
@@ -95,6 +98,9 @@ void gui_kill_event(struct GuiButton *gbtn)
     struct PlayerInfo* player = get_my_player();
     EventIndex evidx = get_my_event_button_index(gbtn->content.lval);
     turn_off_event_box_if_necessary(player->id_number, evidx);
+    if (replay.load_enable || (network_is_active() && net_join_role == NetRole_Spectator)) {
+        return;
+    }
     if (game.event[evidx].kind != EvKind_Objective) {
         my_event_button_state[evidx] |= EvBtnS_Hidden;
         set_players_packet_action(player, PckA_EventBoxTurnOff, evidx, 0, 0, 0);
@@ -520,7 +526,15 @@ void draw_timer(void)
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
 
-static void draw_bottom_right_text(const char *text, int line, TbBool player_icon)
+struct BottomRightTextLayout {
+    int32_t scr_x;
+    int32_t scr_y;
+    int32_t width;
+    int32_t height;
+    int32_t icon_scale;
+};
+
+static void get_bottom_right_text_layout(const char *text, int line, TbBool player_icon, struct BottomRightTextLayout *layout)
 {
     LbTextSetFont(winfont);
     int textLength = strlen(text);
@@ -529,27 +543,34 @@ static void draw_bottom_right_text(const char *text, int line, TbBool player_ico
         textCharWidth += LbTextCharWidth(text[i]);
     }
 
-    int32_t width = textCharWidth * units_per_pixel / 16;
-    int32_t height = LbTextLineHeight() * units_per_pixel / 16 + (LbTextLineHeight() * units_per_pixel / 16) / 2;
+    layout->width = textCharWidth * units_per_pixel / 16;
+    layout->height = LbTextLineHeight() * units_per_pixel / 16 + (LbTextLineHeight() * units_per_pixel / 16) / 2;
     if (MyScreenHeight < 400) {
-        height *= 2;
-        width *= 2;
+        layout->height *= 2;
+        layout->width *= 2;
         if ((dbc_initialized && dbc_enabled) && (game.timer_real)) {
-            width += (width / 8);
+            layout->width += (layout->width / 8);
         }
     }
-    RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
-    int32_t scr_x = MyScreenWidth - width - 16 * units_per_pixel / 16;
-    int32_t icon_scale = 0;
+    layout->scr_x = MyScreenWidth - layout->width - 16 * units_per_pixel / 16;
+    layout->icon_scale = 0;
     if (player_icon) {
         const struct TbSprite *icon = get_panel_sprite(GPS_plyrsym_symbol_room_red_std_a);
-        icon_scale = calculate_relative_upp(22 * units_per_pixel / 16, 16, icon->SHeight);
-        scr_x -= icon->SWidth * icon_scale / 16 + 4 * units_per_pixel / 16;
+        layout->icon_scale = calculate_relative_upp(22 * units_per_pixel / 16, 16, icon->SHeight);
+        layout->scr_x -= icon->SWidth * layout->icon_scale / 16 + 4 * units_per_pixel / 16;
     }
-    int32_t scr_y = MyScreenHeight - (line + 1) * height - 16 * units_per_pixel / 16;
+    layout->scr_y = MyScreenHeight - (line + 1) * layout->height - 16 * units_per_pixel / 16;
+}
 
-    LbTextSetWindow(scr_x, scr_y, width, height);
-    //draw_slab64k(scr_x, scr_y, units_per_pixel, width, height);
+static void draw_bottom_right_text(const char *text, const struct BottomRightTextLayout *layout, TbBool highlighted)
+{
+    LbTextSetFont(winfont);
+    RendererSetDrawFlags(Lb_TEXT_HALIGN_CENTER);
+    if (highlighted) {
+        LbTextSetRemap(&pixmap.fade_tables[HIGHLIGHTED_TEXT_FADE_LEVEL * PALETTE_COLORS]);
+    }
+    LbTextSetWindow(layout->scr_x, layout->scr_y, layout->width, layout->height);
+    //draw_slab64k(layout->scr_x, layout->scr_y, units_per_pixel, layout->width, layout->height);
     int tx_units_per_px;
     int y;
     if ((MyScreenHeight < 400) && (dbc_initialized && dbc_enabled)) {
@@ -557,15 +578,16 @@ static void draw_bottom_right_text(const char *text, int line, TbBool player_ico
         y = 0;
     } else if ((MyScreenWidth > 1280) && (dbc_initialized && dbc_enabled)) {
         tx_units_per_px = scale_ui_value(16 - (MyScreenWidth / 640));
-        y = height / 4;
+        y = layout->height / 4;
     } else {
         tx_units_per_px = (22 * units_per_pixel) / LbTextLineHeight();
         y = 0;
     }
     LbTextDrawResized(0, y, tx_units_per_px, text);
-    if (player_icon) {
-        draw_gui_panel_sprite_left_player(scr_x + width + 4 * units_per_pixel / 16,
-            scr_y + y, icon_scale, GPS_plyrsym_symbol_room_red_std_a, my_player_number);
+    LbTextSetRemap(NULL);
+    if (layout->icon_scale != 0) {
+        draw_gui_panel_sprite_left_player(layout->scr_x + layout->width + 4 * units_per_pixel / 16,
+            layout->scr_y + y, layout->icon_scale, GPS_plyrsym_symbol_room_red_std_a, my_player_number);
     }
     LbTextSetWindow(0/pixel_size, 0/pixel_size, MyScreenWidth/pixel_size, MyScreenHeight/pixel_size);
 }
@@ -600,28 +622,52 @@ void draw_gameturn_timer(void)
     char text[32];
     if (!local_state.rewinding || !replay_rewind_at_limit() || ((get_time_tick_ns() / 250000000) % 2 == 0)) {
         snprintf(text, sizeof(text), "%sGameTurn %u", local_state.rewinding ? "< " : "", get_gameturn());
-        draw_bottom_right_text(text, 0, false);
+        struct BottomRightTextLayout layout;
+        get_bottom_right_text_layout(text, 0, false, &layout);
+        draw_bottom_right_text(text, &layout, false);
     }
+}
+
+static TbBool get_watched_player_name_layout(char *text, size_t text_size, struct BottomRightTextLayout *layout)
+{
+    const char *name = get_displayed_user_name();
+    if (name == NULL && !(replay.load_enable && is_observer_camera_active())) {
+        return false;
+    }
+    const char *marker = "";
+    if (is_observer_camera_active()) {
+        marker = "*";
+    }
+    if (name == NULL) {
+        name = "";
+    }
+    snprintf(text, text_size, "%s%.*s", marker, (int32_t)sizeof(replay.head.user_names[0]), name);
+    int32_t line = 0;
+    if (gameturn_timer_enabled()) {
+        line = 1;
+    }
+    get_bottom_right_text_layout(text, line, true, layout);
+    return true;
+}
+
+static TbBool mouse_is_over_bottom_right_text(const struct BottomRightTextLayout *layout)
+{
+    return GetMouseX() >= layout->scr_x - layout->height && GetMouseY() >= layout->scr_y - layout->height / 2;
+}
+
+TbBool mouse_is_over_watched_player_name(void)
+{
+    char text[sizeof(netstate.users[0].name) + 2];
+    struct BottomRightTextLayout layout;
+    return get_watched_player_name_layout(text, sizeof(text), &layout) && mouse_is_over_bottom_right_text(&layout);
 }
 
 void draw_watched_player_name(void)
 {
     char text[sizeof(netstate.users[0].name) + 2];
-    const char *name = get_displayed_user_name();
-    if (name != NULL || (replay.load_enable && is_observer_camera_active())) {
-        const char *marker = "";
-        if (is_observer_camera_active()) {
-            marker = "*";
-        }
-        if (name == NULL) {
-            name = "";
-        }
-        snprintf(text, sizeof(text), "%s%.*s", marker, (int32_t)sizeof(replay.head.user_names[0]), name);
-        int32_t line = 0;
-        if (gameturn_timer_enabled()) {
-            line = 1;
-        }
-        draw_bottom_right_text(text, line, true);
+    struct BottomRightTextLayout layout;
+    if (get_watched_player_name_layout(text, sizeof(text), &layout)) {
+        draw_bottom_right_text(text, &layout, mouse_is_over_bottom_right_text(&layout));
     }
 }
 
@@ -1059,11 +1105,8 @@ void draw_network_stats()
     unsigned int lost_packet_count = GetClientPacketsLost();
     unsigned int outgoing_rate_kb10 = (GetUploadRateBytesPerSecond() * 10) / 1024;
     unsigned int incoming_rate_kb10 = (GetDownloadRateBytesPerSecond() * 10) / 1024;
-    int32_t increase_wait_time;
-    int32_t increase_turn_time;
-    int32_t decrease_wait_time;
-    int32_t decrease_sample_time;
-    input_lag_get_stats(&increase_wait_time, &increase_turn_time, &decrease_wait_time, &decrease_sample_time);
+    struct InputLagStats input_lag_stats;
+    input_lag_get_stats(&input_lag_stats);
     int64_t turn_length_ns = 0;
     if (turns_per_second > 0) {
         turn_length_ns = 1000000000 / turns_per_second;
@@ -1072,39 +1115,50 @@ void draw_network_stats()
             turn_length_ns = 0;
         }
     }
+    int32_t input_lag_ms = (int32_t)(game.input_lag_turns * turn_length_ns / 1000000);
+    int32_t line = 0;
 
     snprintf(text, sizeof(text), "Full ping: %ums", ping);
-    LbTextDrawResized(0, 0, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Half ping: %ums", half_ping);
-    LbTextDrawResized(0, tx_units_per_px, tx_units_per_px, text);
-    snprintf(text, sizeof(text), "Input lag: %d", game.input_lag_turns);
-    LbTextDrawResized(0, tx_units_per_px * 2, tx_units_per_px, text);
-    snprintf(text, sizeof(text), "Packet wait increase: %d/%dms in %dms", increase_wait_time,
-        increase_turn_time, INPUT_LAG_INCREASE_SAMPLE_MS);
-    LbTextDrawResized(0, tx_units_per_px * 3, tx_units_per_px, text);
-    snprintf(text, sizeof(text), "Packet wait decrease: %d/%dms", decrease_wait_time, decrease_sample_time);
-    LbTextDrawResized(0, tx_units_per_px * 4, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
+    if (input_lag_stats.target != game.input_lag_turns) {
+        snprintf(text, sizeof(text), "Input lag: %d turns (%dms) -> %d", game.input_lag_turns, input_lag_ms, input_lag_stats.target);
+    } else {
+        snprintf(text, sizeof(text), "Input lag: %d turns (%dms)", game.input_lag_turns, input_lag_ms);
+    }
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
+    snprintf(text, sizeof(text), "Packets arrive in: %dms", input_lag_stats.packet_delay);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
+    snprintf(text, sizeof(text), "Raise lag to: %d turns", input_lag_stats.increase_level);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
+    if (input_lag_stats.sample_count >= INPUT_LAG_DECREASE_WINDOW_TURNS) {
+        snprintf(text, sizeof(text), "Lower lag to: %d turns", input_lag_stats.decrease_level);
+    } else {
+        snprintf(text, sizeof(text), "Lower lag to: collecting %d%%", input_lag_stats.sample_count * 100 / INPUT_LAG_DECREASE_WINDOW_TURNS);
+    }
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Download: %u.%u KB/s",
         incoming_rate_kb10 / 10, incoming_rate_kb10 % 10);
-    LbTextDrawResized(0, tx_units_per_px * 5, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Upload: %u.%u KB/s",
         outgoing_rate_kb10 / 10, outgoing_rate_kb10 % 10);
-    LbTextDrawResized(0, tx_units_per_px * 6, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Congestion: %u bytes", transit);
-    LbTextDrawResized(0, tx_units_per_px * 7, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Loss rate: %u%%", packet_loss_percent);
-    LbTextDrawResized(0, tx_units_per_px * 8, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Lost packets: %u", lost_packet_count);
-    LbTextDrawResized(0, tx_units_per_px * 9, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Stutter: %dms", stutter_detection_current);
-    LbTextDrawResized(0, tx_units_per_px * 10, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Average stutter: %dms", stutter_detection_average);
-    LbTextDrawResized(0, tx_units_per_px * 11, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Max stutter: %dms", stutter_detection_max);
-    LbTextDrawResized(0, tx_units_per_px * 12, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Turn length: %" PRId64, turn_length_ns);
-    LbTextDrawResized(0, tx_units_per_px * 13, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
     snprintf(text, sizeof(text), "Gameturn: %u", get_gameturn());
-    LbTextDrawResized(0, tx_units_per_px * 14, tx_units_per_px, text);
+    LbTextDrawResized(0, tx_units_per_px * line++, tx_units_per_px, text);
 }
 /******************************************************************************/

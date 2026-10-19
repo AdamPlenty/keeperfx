@@ -81,7 +81,7 @@
 #include "power_specials.h"
 #include "power_hand.h"
 #include "room_util.h"
-#include "roomspace_prediction.h"
+#include "roomspace_input.h"
 #include "room_workshop.h"
 #include "room_data.h"
 #include "thing_stats.h"
@@ -124,7 +124,6 @@ extern TbBool process_players_dungeon_control_cheats_packet_action(PlayerNumber 
 TbBool unpausing_in_progress = 0;
 /******************************************************************************/
 #define RESYNC_LIMIT_BEFORE_COOLDOWN 5
-#define RESYNC_COOLDOWN_MS (5 * 60 * 1000)
 
 void set_packet_action(struct Packet *pckt, unsigned char pcktype, long par1, long par2, unsigned short par3, unsigned short par4)
 {
@@ -270,9 +269,6 @@ static int32_t resync_attempt_count = 0;
 
 TbBool is_desync_warning_active(void)
 {
-    if (network_is_active() && network_user_is_spectator(netstate.my_id) && network_spectator_desynced) {
-        return true;
-    }
     return resync_attempt_count >= RESYNC_LIMIT_BEFORE_COOLDOWN && (local_system_flags & (GSF_NetGameNoSync | GSF_NetSeedNoSync)) != 0;
 }
 
@@ -340,9 +336,7 @@ void process_pause_packet(long curr_pause, long new_pause)
     {
         if ((player->allocflags & PlaF_CompCtrl) == 0)
         {
-            if ((player->instance_num == PI_MapFadeTo)
-             || (player->instance_num == PI_MapFadeFrom)
-             || (player->instance_num == PI_CrCtrlFade)
+            if ((player->instance_num == PI_CrCtrlFade)
              || (player->instance_num == PI_DirctCtrl)
              || (player->instance_num == PI_PsngrCtrl)
              || (player->instance_num == PI_DirctCtLeave)
@@ -548,21 +542,6 @@ void process_camera_view_controls(struct Camera* cam, const struct Packet* pckt,
     }
 }
 
-void update_box_lag_compensation(struct PlayerInfo* player) {
-    box_lag_compensation_x = 0;
-    box_lag_compensation_y = 0;
-    if (is_my_player(player)) {
-        struct Packet* auth_pckt = get_local_packet();
-        const struct Packet *visual_pckt = get_history_packet(get_local_user(), get_gameturn());
-        if (visual_pckt != NULL) {
-            box_lag_compensation_x = coord_slab(auth_pckt->pos_x) - coord_slab(visual_pckt->pos_x);
-            box_lag_compensation_y = coord_slab(auth_pckt->pos_y) - coord_slab(visual_pckt->pos_y);
-            box_lag_compensation_x = slab_coord(box_lag_compensation_x);
-            box_lag_compensation_y = slab_coord(box_lag_compensation_y);
-        }
-    }
-}
-
 /**
  * Applies a packet's camera controls to the user's dungeon camera.
  * Rotation is local-only; the dungeon camera's angle catches up through PckA_SetMapRotation.
@@ -640,9 +619,6 @@ void process_user_dungeon_control_packet_control(NetUserId user)
         if (settings_changed) {
             save_settings();
         }
-    }
-    if (is_my_player(player)) {
-        update_box_lag_compensation(player);
     }
     process_dungeon_control_packet_clicks(user);
     update_mouse_light(user);
@@ -933,15 +909,7 @@ TbBool process_user_global_packet_action(NetUserId user)
       set_user_view_type(user, pckt->actn_par1);
       return 0;
   case PckA_ZoomFromMap:
-      if (ustate->prefs[UPref_MapFade] > 0)
-      {
-        set_user_view_type(user, PVT_MapFadeOut);
-      } else
-      {
-        if (get_local_user() == user)
-          toggle_status_menu(local_state.show_panel);
-        set_user_view_type(user, PVT_DungeonTop);
-      }
+      set_user_view_type(user, PVT_DungeonTop);
       return 0;
   case PckA_UpdatePause:
       process_pause_packet(pckt->actn_par1, pckt->actn_par2);
@@ -1110,17 +1078,6 @@ TbBool process_user_global_packet_action(NetUserId user)
   case PckA_LoadViewType:
       set_user_view_type(user, pckt->actn_par1);
       return false;
-    case PckA_SetRoomspaceAuto:
-    case PckA_SetRoomspaceMan:
-    case PckA_SetRoomspaceDragPaint:
-    case PckA_SetRoomspaceDrag:
-    case PckA_SetRoomspaceDefault:
-    case PckA_SetRoomspaceWholeRoom:
-    case PckA_SetRoomspaceSubtile:
-    {
-        apply_roomspace_packet_action(player, user, pckt);
-        return false;
-    }
     case PckA_RoomspaceHighlightToggle:
     {
         get_user_state(user)->prefs[UPref_StartingHighlightMode] = pckt->actn_par1;
@@ -1136,31 +1093,15 @@ TbBool process_user_global_packet_action(NetUserId user)
     // fall through
     case PckA_ApplyRoomspaceDigTag:
     case PckA_SetRoomspaceHighlight:
-    {
-        ustate->roomspace_mode = pckt->actn_par1;
-        if ( (pckt->actn_par2 == 1) || (pckt->actn_par1 == roomspace_detection_mode) )
-        {
-            // exit out of click and drag mode
-            if (ustate->render_roomspace.drag_mode)
-            {
-                ustate->cursor_button_down = 0;
-                ustate->one_click_lock_cursor = false;
-                if ((pckt->control_flags & PCtr_LBtnHeld) == PCtr_LBtnHeld)
-                {
-                    ustate->ignore_next_PCtr_LBtnRelease = true;
-                }
-            }
-            ustate->render_roomspace.drag_mode = false;
-        }
-        ustate->roomspace_highlight_mode = pckt->actn_par1;
-        if (pckt->actn_par1 == box_placement_mode) {
-            reset_dungeon_build_room_ui_variables(user);
-        }
-        if (pckt->actn_par1 == box_placement_mode || pckt->actn_par1 == roomspace_detection_mode || (pckt->actn_par1 == drag_placement_mode && pckt->actn_par2 == 1)) {
-            ustate->roomspace_width = ustate->roomspace_height = pckt->actn_par2;
-        }
+    case PckA_SetRoomspaceAuto:
+    case PckA_SetRoomspaceMan:
+    case PckA_SetRoomspaceDragPaint:
+    case PckA_SetRoomspaceDrag:
+    case PckA_SetRoomspaceDefault:
+    case PckA_SetRoomspaceWholeRoom:
+    case PckA_SetRoomspaceSubtile:
+        apply_roomspace_packet_action(user, pckt);
         return false;
-    }
     case PckA_PlyrQueryCreature:
     {
         query_creature(player, pckt->actn_par1, (pckt->actn_par2 & 0x01) != 0, (pckt->actn_par2 & 0x02) != 0);
@@ -1514,14 +1455,20 @@ void process_user_creature_control_packet_control(NetUserId user)
                     {
                         if (creature_instance_has_reset(cctng, i))
                         {
-                            if (creature_under_spell_effect(cctng, CSAfF_Freeze))
+                            // Same rules as the button release above: a chicken or a frozen creature only self-casts.
+                            TbBool chicken = creature_under_spell_effect(cctng, CSAfF_Chicken);
+                            if (chicken || creature_under_spell_effect(cctng, CSAfF_Freeze))
                             {
                                 target_idx = get_human_controlled_creature_target(cctng, i, pckt);
-                                allowed = inst_inf->fp_allow_self_cast_while_frozen & (cctng->index == target_idx);
                             }
-                            else
+                            allowed = true;
+                            if (chicken)
                             {
-                                allowed = true;
+                                allowed = inst_inf->fp_allow_self_cast_when_chicken & (cctng->index == target_idx);
+                            }
+                            if (allowed && creature_under_spell_effect(cctng, CSAfF_Freeze))
+                            {
+                                allowed = inst_inf->fp_allow_self_cast_while_frozen & (cctng->index == target_idx);
                             }
                             if (allowed)
                             {
@@ -1719,7 +1666,7 @@ enum PacketExchangeResult exchange_packets(void)
         set_local_packet_turn();
         update_turn_checksums();
     }
-    update_local_dig_tag_prediction();
+    update_dig_tag_input();
     if (!replay.load_enable && !spectator) {
         set_pending_timestamp_packet_action(get_local_packet());
         camera_packet_set_state(get_local_packet());
@@ -1748,6 +1695,9 @@ enum PacketExchangeResult exchange_packets(void)
         }
         if (spectator && network_is_active()) {
             enum PacketExchangeResult result = network_spectator_load_turn(packet_checksum);
+            if (network_spectator_desynced && !network_spectator_resync_requested) {
+                network_spectator_request_resync();
+            }
             if (result == PExR_Wait) {
                 local_state.process_turn_time = 0;
                 observer_store_packets(NULL);
@@ -1790,7 +1740,6 @@ void clear_users_button_state(void)
         if (user_state_invalid(ustate))
             continue;
         ustate->cursor_button_down = 0;
-        ustate->interpolated_tagging = false;
     }
 }
 
@@ -1824,7 +1773,7 @@ void process_packets(void)
             process_user_packet(user);
         }
     }
-    update_local_dig_prediction_cursor_preview();
+    update_dig_prediction_cursor_preview();
     // Clear all packets
     clear_packets();
     if (network_is_active()) {

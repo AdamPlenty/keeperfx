@@ -51,6 +51,8 @@ struct PlayerInfo bad_player;
 
 struct LocalState local_state;
 struct UserState bad_user_state;
+static struct UserState local_user_state_prediction;
+static TbBool local_user_state_prediction_active;
 
 /** The current player's number. */
 unsigned char my_player_number;
@@ -89,7 +91,6 @@ unsigned char get_player_active_camera_index(const struct PlayerInfo *player)
     case PVT_CreaturePasngr:
         return CamIV_FirstPerson;
     case PVT_MapScreen:
-    case PVT_MapFadeOut:
         return CamIV_Parchment;
     default:
         return (get_player_user_state(player)->prefs[UPref_FrontView] != 0) ? CamIV_FrontView : CamIV_Isometric;
@@ -213,6 +214,25 @@ NetUserId get_player_primary_user(const struct PlayerInfo *player)
 struct UserState *get_player_user_state(const struct PlayerInfo *player)
 {
     return get_user_state(get_player_primary_user(player));
+}
+
+void set_local_user_state_prediction(const struct UserState *ustate)
+{
+    local_user_state_prediction_active = (ustate != NULL);
+    if (ustate != NULL) {
+        local_user_state_prediction = *ustate;
+    }
+}
+
+/**
+ * Returns the player's user state as it will be once the local user's pending packets are processed.
+ */
+const struct UserState *get_player_user_state_prediction(const struct PlayerInfo *player)
+{
+    if (local_user_state_prediction_active && is_my_player(player)) {
+        return &local_user_state_prediction;
+    }
+    return get_player_user_state(player);
 }
 
 struct UserState *get_local_user_state(void)
@@ -465,17 +485,9 @@ void set_player_ally_locked(PlayerNumber plyr_idx, PlayerNumber ally_idx, TbBool
         clear_flag(player->players_with_locked_ally_status, to_flag(ally_idx)); // unlock ally player's ally status with player plyridx
 }
 
-void set_user_work_state(NetUserId user, short nwrk_state, int32_t chosen_kind)
+void set_user_work_state_kind(struct UserState *ustate, int32_t chosen_kind)
 {
-  struct UserState* ustate = get_user_state(user);
-  if (user_state_invalid(ustate))
-    return;
-  struct PlayerInfo* player = get_user_player(user);
-  SYNCDBG(6,"User %d (player %d) state %s to %s",(int)user,(int)player->id_number,player_state_code_name(ustate->work_state),player_state_code_name(nwrk_state));
-  // Selecting the same state again - update only 2nd parameter
-  if (ustate->work_state == nwrk_state)
-  {
-    switch ( ustate->work_state )
+    switch (ustate->work_state)
     {
     case PSt_BuildRoom:
         ustate->chosen_room_kind = chosen_kind;
@@ -509,6 +521,19 @@ void set_user_work_state(NetUserId user, short nwrk_state, int32_t chosen_kind)
         ustate->chosen_power_kind = PwrK_CHICKEN;
         break;
     }
+}
+
+void set_user_work_state(NetUserId user, short nwrk_state, int32_t chosen_kind)
+{
+  struct UserState* ustate = get_user_state(user);
+  if (user_state_invalid(ustate))
+    return;
+  struct PlayerInfo* player = get_user_player(user);
+  SYNCDBG(6,"User %d (player %d) state %s to %s",(int)user,(int)player->id_number,player_state_code_name(ustate->work_state),player_state_code_name(nwrk_state));
+  // Selecting the same state again - update only 2nd parameter
+  if (ustate->work_state == nwrk_state)
+  {
+    set_user_work_state_kind(ustate, chosen_kind);
     return;
   }
   ustate->continue_work_state = ustate->work_state;
@@ -520,50 +545,33 @@ void set_user_work_state(NetUserId user, short nwrk_state, int32_t chosen_kind)
   {
       clear_selected_thing(player);
   }
+  set_user_work_state_kind(ustate, chosen_kind);
   switch (ustate->work_state)
   {
   case PSt_CtrlDungeon:
       ustate->full_slab_cursor = 1;
       ustate->chosen_power_kind = PwrK_None; //Cleanup for spells. Traps, doors and rooms do not require cleanup.
       break;
-  case PSt_BuildRoom:
-      ustate->chosen_room_kind = chosen_kind;
-      break;
   case PSt_HoldInHand:
       create_power_hand(user);
       break;
   case PSt_Slap:
   {
+      struct Coord3d pos;
+      pos.x.val = 0;
+      pos.y.val = 0;
+      pos.z.val = 0;
+      struct Thing* thing = create_object(&pos, ObjMdl_PowerHand, player->id_number, -1);
+      if (thing_is_invalid(thing))
       {
-          struct Coord3d pos;
-          pos.x.val = 0;
-          pos.y.val = 0;
-          pos.z.val = 0;
-          struct Thing* thing = create_object(&pos, ObjMdl_PowerHand, player->id_number, -1);
-          if (thing_is_invalid(thing))
-          {
-              ustate->hand_thing_idx = 0;
-              break;
-          }
-          ustate->hand_thing_idx = thing->index;
-          set_power_hand_graphic(user, HndA_SideHover);
-          place_thing_in_limbo(thing);
+          ustate->hand_thing_idx = 0;
           break;
       }
+      ustate->hand_thing_idx = thing->index;
+      set_power_hand_graphic(user, HndA_SideHover);
+      place_thing_in_limbo(thing);
+      break;
   }
-  case PSt_PlaceTrap:
-      ustate->chosen_trap_kind = chosen_kind;
-      break;
-  case PSt_PlaceDoor:
-      ustate->chosen_door_kind = chosen_kind;
-      break;
-  case PSt_CastPowerOnSubtile:
-  case PST_CastPowerOnTarget:
-  case PSt_CallToArms:
-  case PSt_SightOfEvil:
-  case PSt_CreateDigger:
-      ustate->chosen_power_kind = chosen_kind;
-      break;
   case PSt_MkGoodCreatr:
         clear_messages_from_player(MsgType_Player, ustate->cheatselection.chosen_player);
         ustate->cheatselection.chosen_player = PLAYER_GOOD;
@@ -573,21 +581,6 @@ void set_user_work_state(NetUserId user, short nwrk_state, int32_t chosen_kind)
         clear_messages_from_player(MsgType_Player, ustate->cheatselection.chosen_player);
         ustate->cheatselection.chosen_player = player->id_number;
         break;
-  case PSt_FreeCtrlPassngr:
-  case PSt_FreeCtrlDirect:
-  case PSt_CtrlPassngr:
-  case PSt_CtrlDirect:
-        ustate->chosen_power_kind = PwrK_POSSESS;
-        break;
-  case PSt_FreeDestroyWalls:
-      ustate->chosen_power_kind = PwrK_DESTRWALLS;
-      break;
-  case PSt_FreeCastDisease:
-      ustate->chosen_power_kind = PwrK_DISEASE;
-      break;
-  case PSt_FreeTurnChicken:
-      ustate->chosen_power_kind = PwrK_CHICKEN;
-      break;
    default:
       break;
   }
@@ -610,7 +603,7 @@ void set_user_view_type(NetUserId user, unsigned short nview)
     local_state.view_type = PVT_None;
   if (ustate->view_type == nview)
     return;
-  const TbBool leaving_map = (ustate->view_type == PVT_MapScreen) || (ustate->view_type == PVT_MapFadeOut);
+  const TbBool leaving_map = (ustate->view_type == PVT_MapScreen);
   ustate->view_type = nview;
   ustate->init_flags &= ~UsrIF_CreaturePassengerMode;
   if (is_local)
@@ -657,16 +650,6 @@ void set_user_view_type(NetUserId user, unsigned short nview)
       if (is_local)
         update_engine_view(player, leaving_map);
       break;
-  case PVT_MapFadeIn:
-      set_player_instance(player, PI_MapFadeTo, 0);
-      if (player->instance_num == PI_MapFadeTo)
-          player->instance_remain_turns = max((int32_t)ustate->prefs[UPref_MapFade], 1);
-      break;
-  case PVT_MapFadeOut:
-      set_player_instance(player, PI_MapFadeFrom, 0);
-      if (player->instance_num == PI_MapFadeFrom)
-          player->instance_remain_turns = max((int32_t)ustate->prefs[UPref_MapFade], 1);
-      break;
   }
 }
 
@@ -677,7 +660,7 @@ void reset_user_view_type(NetUserId user, unsigned short nview)
     return;
   struct PlayerInfo* player = get_user_player(user);
   const TbBool is_local = (user == get_local_user());
-  const TbBool leaving_map = ustate->view_type == PVT_MapScreen || ustate->view_type == PVT_MapFadeOut;
+  const TbBool leaving_map = ustate->view_type == PVT_MapScreen;
   ustate->view_type = nview;
   switch (nview)
   {

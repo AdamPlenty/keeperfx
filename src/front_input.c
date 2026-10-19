@@ -78,6 +78,7 @@
 #include "packets.h"
 #include "replay.h"
 #include "replay_rewind.h"
+#include "roomspace_input.h"
 #include "console_cmd.h"
 #include "engine_redraw.h"
 #include "timer.h"
@@ -282,7 +283,7 @@ TbBool check_current_gui_layer(long layer_id)
 
 static void update_gui_layer(void)
 {
-    struct UserState* ustate = get_local_user_state();
+    const struct UserState* ustate = get_player_user_state_prediction(get_my_player());
     // Determine the current/correct GUI Layer to use at this moment
 
     if ( ((ustate->work_state == PSt_Sell) || (ustate->work_state == PSt_BuildRoom) || (ustate->render_roomspace.highlight_mode))  &&
@@ -718,12 +719,12 @@ static void get_observer_camera_inputs(void)
     struct Camera* camera = get_local_active_camera(player);
     if (get_local_view_type(player) == PVT_MapScreen) {
         if (is_game_key_pressed(Gkey_SwitchToMap, true, false)) {
-            set_observer_camera_view(PVT_DungeonTop);
+            fade_observer_camera_view(PVT_DungeonTop);
         }
         return;
     }
     if (is_game_key_pressed(Gkey_SwitchToMap, true, false)) {
-        set_observer_camera_view(PVT_MapScreen);
+        fade_observer_camera_view(PVT_MapScreen);
         return;
     }
     struct Packet* fpckt = get_observer_camera_packet();
@@ -944,9 +945,7 @@ static short get_global_inputs(void)
         return true;
       }
   }
-  if ((player->instance_num != PI_MapFadeTo) &&
-      (player->instance_num != PI_MapFadeFrom) &&
-      (!game_is_busy_doing_gui_string_input()))
+  if (!game_is_busy_doing_gui_string_input())
     {
 
         TbBool toggle_pause = is_game_key_pressed(Gkey_TogglePause, true, false);
@@ -1103,19 +1102,7 @@ static TbBool get_level_lost_inputs(void)
     if (view_type == PVT_DungeonTop)
     {
       if (is_game_key_pressed(Gkey_SwitchToMap, true, false)) {
-        if (player->instance_num != PI_MapFadeFrom)
-        {
-          turn_off_all_window_menus();
-          local_state.show_panel = local_state.show_gui;
-          if (parchment_map_fade_enabled())
-          {
-                set_players_packet_action(player, PckA_SetViewType, PVT_MapFadeIn, 0, 0, 0);
-          } else
-          {
-                set_players_packet_action(player, PckA_SaveViewType, PVT_MapScreen, 0,0,0);
-          }
-          turn_off_roaming_menus();
-        }
+        zoom_to_parchment_map();
       }
     }
     TbBool inp_done=false;
@@ -1429,7 +1416,7 @@ static TbBool get_dungeon_control_pausable_action_inputs(void)
       {
           return true;
       }
-      if ((player->instance_num != PI_MapFadeFrom) && (game.small_map_state != 2))
+      if (game.small_map_state != 2)
       {
           turn_off_all_window_menus();
           zoom_to_parchment_map();
@@ -1477,7 +1464,7 @@ static long get_dungeon_small_map_inputs(struct Packet *pckt)
 static TbBool get_dungeon_control_action_inputs(void)
 {
     struct PlayerInfo* player = get_my_player();
-    struct UserState* ustate = get_local_user_state();
+    const struct UserState* ustate = get_player_user_state_prediction(player);
     if (get_players_packet_action(player) != PckA_None)
         return true;
     if (get_dungeon_small_map_inputs(get_local_packet()))
@@ -2081,31 +2068,20 @@ static short get_creature_control_action_inputs(void)
 
 static void set_packet_action_for_thing_under_hand(struct Packet* pckt)
 {
-    NetUserId user = get_local_user();
     struct PlayerInfo* player = get_my_player();
-    struct UserState* ustate = get_local_user_state();
+    const struct UserState* ustate = get_player_user_state_prediction(player);
     if ((get_local_view_type(player) != PVT_DungeonTop) || ((pckt->control_flags & PCtr_Gui) != 0) || (local_state.local_thing_under_hand <= 0) || (pckt->action != PckA_None) || (get_gameturn() - hand_pick_pending_turn <= game.input_lag_turns)) {
         return;
     }
     int32_t cursor_state = (pckt->additional_packet_values & PCAdV_ContextMask) >> 1;
-    if (right_button_released && (ustate->work_state == PSt_CtrlDungeon) && (cursor_state == CSt_PowerHand) && power_hand_is_empty(player) && !ustate->one_click_lock_cursor && thing_slappable(thing_get(local_state.local_thing_under_hand), player->id_number)) {
+    if (right_button_released && (ustate->work_state == PSt_CtrlDungeon) && (cursor_state == CSt_PowerHand) && power_hand_is_empty(player) && !local_cursor_is_locked() && thing_slappable(thing_get(local_state.local_thing_under_hand), player->id_number)) {
         set_packet_power_on_thing(pckt, PwrK_SLAP, local_state.local_thing_under_hand);
         return;
     }
     if (!left_button_released) {
         return;
     }
-    PowerKind pwkind = ustate->chosen_power_kind;
-    PlayerState work_state = ustate->work_state;
-    for (GameTurnDelta i = 1; i <= game.input_lag_turns; i += 1) {
-        const struct Packet* delayed_pckt = get_history_packet(user, get_gameturn() - i);
-        if ((delayed_pckt != NULL) && (delayed_pckt->action == PckA_SetPlyrState)) {
-            work_state = delayed_pckt->actn_par1;
-            pwkind = delayed_pckt->actn_par2;
-            break;
-        }
-    }
-    switch (work_state) {
+    switch (ustate->work_state) {
         case PSt_CtrlDungeon:
             if ((pckt->additional_packet_values & PCAdV_CrtrContrlPressed) != 0) {
                 set_packet_power_on_thing(pckt, PwrK_POSSESS, local_state.local_thing_under_hand);
@@ -2122,7 +2098,7 @@ static void set_packet_action_for_thing_under_hand(struct Packet* pckt)
             set_packet_power_on_thing(pckt, PwrK_POSSESS, local_state.local_thing_under_hand);
             break;
         case PST_CastPowerOnTarget:
-            set_packet_power_on_thing(pckt, pwkind, local_state.local_thing_under_hand);
+            set_packet_power_on_thing(pckt, ustate->chosen_power_kind, local_state.local_thing_under_hand);
             break;
     }
 }
@@ -2270,46 +2246,29 @@ static void get_isometric_or_front_view_mouse_inputs(struct Packet *pckt,int rot
     {
         return; // don't pan the camera if the mouse has left the window
     }
-    if (is_feature_on(Ft_DisableCursorCameraPanning) == false)
-    {
-        long mx = my_mouse_x;
-        long my = my_mouse_y;
-        long edge_scrolling_border = max(4, scale_fixed_DK_value(4));
-        if (mx <= edge_scrolling_border)
-        {
-            if ( is_game_key_pressed(Gkey_MoveLeft, false, false) || is_key_pressed(KC_LEFT,KMod_DONTCARE) )
-            {
-              if (!rotate_pressed)
-                pckt->additional_packet_values |= PCAdV_AlternatePressed;
-            }
+    if (is_feature_on(Ft_DisableCursorCameraPanning) == false) {
+        int32_t mx = my_mouse_x;
+        int32_t my = my_mouse_y;
+        int32_t edge_scrolling_border = max(4, scale_fixed_DK_value(4));
+        TbBool movement_key_held = false;
+        if (mx <= edge_scrolling_border) {
+            movement_key_held |= is_game_key_pressed(Gkey_MoveLeft, false, false) || is_key_pressed(KC_LEFT, KMod_DONTCARE);
             local_state.camera_movement_x = -1.0f;
         }
-        if (mx >= MyScreenWidth-edge_scrolling_border)
-        {
-            if ( is_game_key_pressed(Gkey_MoveRight, false, false) || is_key_pressed(KC_RIGHT,KMod_DONTCARE) )
-            {
-              if (!rotate_pressed)
-                pckt->additional_packet_values |= PCAdV_AlternatePressed;
-            }
+        if (mx >= MyScreenWidth - edge_scrolling_border) {
+            movement_key_held |= is_game_key_pressed(Gkey_MoveRight, false, false) || is_key_pressed(KC_RIGHT, KMod_DONTCARE);
             local_state.camera_movement_x = 1.0f;
         }
-        if (my <= edge_scrolling_border)
-        {
-            if ( is_game_key_pressed(Gkey_MoveUp, false, false) || is_key_pressed(KC_UP,KMod_DONTCARE) )
-            {
-              if (!rotate_pressed)
-                pckt->additional_packet_values |= PCAdV_AlternatePressed;
-            }
+        if (my <= edge_scrolling_border) {
+            movement_key_held |= is_game_key_pressed(Gkey_MoveUp, false, false) || is_key_pressed(KC_UP, KMod_DONTCARE);
             local_state.camera_movement_y = -1.0f;
         }
-        if (my >= MyScreenHeight-edge_scrolling_border)
-        {
-            if ( is_game_key_pressed(Gkey_MoveDown, false, false) || is_key_pressed(KC_DOWN,KMod_DONTCARE) )
-            {
-              if (!rotate_pressed)
-                pckt->additional_packet_values |= PCAdV_AlternatePressed;
-            }
+        if (my >= MyScreenHeight - edge_scrolling_border) {
+            movement_key_held |= is_game_key_pressed(Gkey_MoveDown, false, false) || is_key_pressed(KC_DOWN, KMod_DONTCARE);
             local_state.camera_movement_y = 1.0f;
+        }
+        if (movement_key_held && !rotate_pressed) {
+            local_state.camera_speedup_pressed = true;
         }
     }
 }
@@ -2493,7 +2452,7 @@ static TbBool get_player_coords_and_context(struct Coord3d *pos, unsigned char *
   unsigned long x;
   unsigned long y;
   struct PlayerInfo* player = get_my_player();
-  struct UserState* ustate = get_local_user_state();
+  TbBool cursor_locked = local_cursor_is_locked();
   TbBool hand_is_empty = power_hand_is_empty(player);
   if ((pointer_x < 0) || (pointer_y < 0)
    || (pointer_x >= local_state.engine_window_width/pixel_size)
@@ -2512,7 +2471,7 @@ static TbBool get_player_coords_and_context(struct Coord3d *pos, unsigned char *
 
   struct SlabMap* slb = get_slabmap_block(slb_x, slb_y);
   struct SlabConfigStats* slabst = get_slab_stats(slb);
-  if (slab_kind_is_door(slb->kind) && (slabmap_owner(slb) == player->id_number) && (!ustate->one_click_lock_cursor))
+  if (slab_kind_is_door(slb->kind) && (slabmap_owner(slb) == player->id_number) && (!cursor_locked))
   {
     *context = CSt_DoorKey;
     pos->x.val = (x<<8) + top_pointed_at_frac_x;
@@ -2530,13 +2489,13 @@ static TbBool get_player_coords_and_context(struct Coord3d *pos, unsigned char *
     pos->x.val = (x<<8) + top_pointed_at_frac_x;
     pos->y.val = (y<<8) + top_pointed_at_frac_y;
   } else
-  if (((slb_x >= game.map_tiles_x) || (slb_y >= game.map_tiles_y)) && (!ustate->one_click_lock_cursor))
+  if (((slb_x >= game.map_tiles_x) || (slb_y >= game.map_tiles_y)) && (!cursor_locked))
   {
     *context = CSt_DefaultArrow;
     pos->x.val = (block_pointed_at_x<<8) + pointed_at_frac_x;
     pos->y.val = (block_pointed_at_y<<8) + pointed_at_frac_y;
   } else
-  if (((slabst->block_flags & (SlbAtFlg_Filled|SlbAtFlg_Digable|SlbAtFlg_Valuable)) != 0) || (ustate->one_click_lock_cursor))
+  if (((slabst->block_flags & (SlbAtFlg_Filled|SlbAtFlg_Digable|SlbAtFlg_Valuable)) != 0) || (cursor_locked))
   {
     *context = CSt_PickAxe;
     pos->x.val = (x<<8) + top_pointed_at_frac_x;
@@ -2547,7 +2506,7 @@ static TbBool get_player_coords_and_context(struct Coord3d *pos, unsigned char *
     pos->y.val = (block_pointed_at_y<<8) + pointed_at_frac_y;
     *context = CSt_PowerHand;
   }
-  if ((*context == CSt_PowerHand) && (!ustate->one_click_lock_cursor))
+  if ((*context == CSt_PowerHand) && (!cursor_locked))
   {
     struct Thing* thing = get_nearest_thing_for_hand_or_slap(player->id_number, pos->x.val, pos->y.val);
     if (!thing_is_invalid(thing)) {
@@ -2570,11 +2529,11 @@ static TbBool get_player_coords_and_context(struct Coord3d *pos, unsigned char *
  */
 static void get_dungeon_control_nonaction_inputs(void)
 {
-  struct UserState* ustate = get_local_user_state();
+  struct PlayerInfo* player = get_my_player();
+  const struct UserState* ustate = get_player_user_state_prediction(player);
   struct Coord3d pos;
   my_mouse_x = GetMouseX();
   my_mouse_y = GetMouseY();
-  struct PlayerInfo* player = get_my_player();
   struct Camera* camera = get_local_active_camera(player);
   struct Packet* pckt = get_local_packet();
   if (get_gameturn() - hand_pick_pending_turn > game.input_lag_turns) {
@@ -2692,7 +2651,13 @@ static TbBool get_observer_camera_click_inputs(void)
         return false;
     }
     struct PlayerInfo *player = get_my_player();
-    if (!observer_query_input()) {
+    if (mouse_is_over_watched_player_name()) {
+        if (right_button_released) {
+            observer_cycle_player(-1);
+        } else {
+            observer_cycle_player(1);
+        }
+    } else if (!observer_query_input()) {
         if (get_local_view_type(player) == PVT_MapScreen && left_button_released) {
             int32_t map_x;
             int32_t map_y;
@@ -2702,10 +2667,6 @@ static TbBool get_observer_camera_click_inputs(void)
             }
         } else if (camera_active) {
             return_to_player_camera();
-        } else if (right_button_released) {
-            observer_cycle_player(-1);
-        } else {
-            observer_cycle_player(1);
         }
     }
     clear_mouse_button_states();
@@ -2728,6 +2689,10 @@ static short get_observer_inputs(void)
         ustate->init_flags |= UsrIF_NewMPMessage;
         LbStartTextInput();
         clear_key_pressed(KC_RETURN);
+        return true;
+    }
+    if (!a_menu_window_is_active() && is_game_key_pressed(Gkey_FinishLevel, true, false)) {
+        observer_cycle_player(1);
         return true;
     }
     if (!a_menu_window_is_active() && !game_is_busy_doing_gui_string_input() && observer_camera_input_pressed()) {
@@ -2930,6 +2895,7 @@ static void get_player_gui_clicks(void)
     return;
   struct PlayerInfo *player = get_my_player();
   struct UserState *ustate = get_local_user_state();
+  const struct UserState *predicted_ustate = get_player_user_state_prediction(player);
   switch (get_local_view_type(player))
   {
   case PVT_CreaturePasngr:
@@ -2962,9 +2928,9 @@ static void get_player_gui_clicks(void)
       {
           if (right_click_tag_mode_toggle)
           {
-              if (ustate->work_state == PSt_CtrlDungeon)
+              if (predicted_ustate->work_state == PSt_CtrlDungeon)
               {
-                  switch (ustate->primary_cursor_state)
+                  switch (predicted_ustate->primary_cursor_state)
                   {
                       case CSt_PickAxe:
                       {
@@ -2986,11 +2952,11 @@ static void get_player_gui_clicks(void)
                       }
                       case CSt_PowerHand:
                       {
-                         if (ustate->thing_under_hand == 0)
+                         if (predicted_ustate->thing_under_hand == 0)
                          {
                              if (!a_menu_window_is_active())
                              {
-                                if (flag_is_set(ustate->additional_flags, UsrAF_ChosenSubTileIsHigh))
+                                if (flag_is_set(predicted_ustate->additional_flags, UsrAF_ChosenSubTileIsHigh))
                                 {
                                     if (!left_button_held)
                                     {
@@ -3015,17 +2981,17 @@ static void get_player_gui_clicks(void)
       }
       if (right_button_released)
       {
-        if ((ustate->work_state != PSt_HoldInHand) || power_hand_is_empty(player))
+        if ((predicted_ustate->work_state != PSt_HoldInHand) || power_hand_is_empty(player))
         {
           if ( !turn_off_all_window_menus() )
           {
-            if (ustate->work_state == PSt_CreatrQuery)
+            if (predicted_ustate->work_state == PSt_CreatrQuery)
             {
               turn_off_query_menus();
               set_players_packet_action(player, PckA_SetPlyrState, PSt_CtrlDungeon, 0, 0, 0);
               right_button_released = 0;
             } else
-            if ((ustate->work_state != PSt_CreatrInfo) && (ustate->work_state != PSt_CreatrInfoAll) && (ustate->work_state != PSt_CtrlDungeon))
+            if ((predicted_ustate->work_state != PSt_CreatrInfo) && (predicted_ustate->work_state != PSt_CreatrInfoAll) && (predicted_ustate->work_state != PSt_CtrlDungeon))
             {
               set_players_packet_action(player, PckA_SetPlyrState, PSt_CtrlDungeon, 0, 0, 0);
               right_button_released = 0;
@@ -3068,10 +3034,15 @@ static short get_inputs(void)
         return get_packet_load_game_inputs();
     }
     struct PlayerInfo* player = get_my_player();
-    if ((get_local_user_state()->init_flags & UsrIF_MouseInputDisabled) != 0)
+    if (((get_local_user_state()->init_flags & UsrIF_MouseInputDisabled) != 0) || (get_local_map_fade() != PVT_None))
     {
-        SYNCDBG(5,"Starting for creature fade");
-        set_players_packet_position(get_local_packet(), 0, 0 , 0);
+        SYNCDBG(5,"Starting for creature or map fade");
+        // Store the creature's facing so possession does not send 0,0 and turn it north.
+        struct Thing *thing = thing_get(player->controlled_thing_idx);
+        if ((get_local_view_type(player) == PVT_CreatureContrl) && thing_exists(thing))
+            set_players_packet_position(get_local_packet(), thing->move_angle_xy, thing->move_angle_z, 0);
+        else
+            set_players_packet_position(get_local_packet(), 0, 0 , 0);
         if ((!game_is_busy_doing_gui_string_input()) && ((game.operation_flags & GOF_Paused) != 0))
         {
             if (is_game_key_pressed(Gkey_PauseMenu, true, false) || is_game_key_pressed(Gkey_TogglePause, true, false))
@@ -3160,21 +3131,6 @@ static short get_inputs(void)
         if (get_players_packet_action(player) != PckA_None)
             unset_players_packet_control(player, PCtr_LBtnRelease|PCtr_RBtnRelease);
         return inp_handled;
-    case PVT_MapFadeIn:
-        if (player->instance_num != PI_MapFadeTo)
-        {
-          if (!network_is_active())
-            game.operation_flags &= ~GOF_Paused;
-          set_map_ui_hidden(true, false);
-          set_players_packet_action(player, PckA_SetViewType, PVT_MapScreen, 0,0,0);
-        }
-        return false;
-    case PVT_MapFadeOut:
-        if (player->instance_num != PI_MapFadeFrom)
-        {
-          set_players_packet_action(player, PckA_SetViewType, PVT_DungeonTop, 0,0,0);
-        }
-        return false;
     default:
         SYNCDBG(7,"Default exit");
         return false;

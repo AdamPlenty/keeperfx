@@ -95,7 +95,6 @@ enum UserInitFlags {
 
 enum UserAdditionalFlags {
     UsrAF_None                      = 0x00,
-    UsrAF_NoThingUnderPowerHand     = 0x01, // Chosen subtile has nothing to interact with with the Power Hand (no creature to slap etc) (But the power hand is active)
     UsrAF_ChosenSubTileIsHigh       = 0x02, // Chosen subtile is at ceiling height (dirt/rock/wall etc)
     UsrAF_FreezePaletteIsActive     = 0x04, // blue_palette is being used during Freeze Spell. TODO: move to LocalState
     UsrAF_LightningPaletteIsActive  = 0x08, // lightning_palette is being used during Lightning Spell. TODO: move to LocalState
@@ -187,7 +186,7 @@ struct PlayerInfo {
     char mp_message_text_last[PLAYER_MP_MESSAGE_LEN];
     /** An "instance" is a short, scripted animation. See: enum PlayerInstanceNum */
     unsigned char instance_num;
-    unsigned long instance_remain_turns;
+    uint32_t instance_remain_turns;
     /** Overcharge level while casting keeper powers. */
     int32_t cast_expand_level;
     GameTurn power_of_cooldown_turn;
@@ -230,8 +229,7 @@ struct UserState {
     TbBool one_click_lock_cursor;
     TbBool ignore_next_PCtr_RBtnRelease;
     TbBool ignore_next_PCtr_LBtnRelease;
-    char swap_to_untag_mode;
-    TbBool interpolated_tagging;
+    int8_t swap_to_untag_mode;
     /** First person (possession) controls. */
     TbBool first_person_dig_claim_mode;
     unsigned short selected_fp_thing_pickup;
@@ -303,10 +301,6 @@ struct LocalCameraState {
  */
 extern struct LocalState {
     unsigned char view_type;
-    TbBool tooltips_restore; /**< Used to store/restore the value of settings.tooltips_on when transitioning to/from the map. */
-    TbBool status_menu_restore; /**< Used to store/restore the current status menu visibility when the map is shown/hidden. */
-    TbBool status_menu_hidden_for_map; /**< The status menu is hidden for the map and status_menu_restore holds its visibility. */
-    TbBool tooltips_hidden_for_map; /**< Tooltips are off for a map fade and tooltips_restore holds the setting. */
     TbBool paused_state_restore; /**< Used to restore pause state after saving */
     TbBool display_needs_update;
     short local_thing_under_hand;
@@ -314,6 +308,9 @@ extern struct LocalState {
     unsigned char *lens_palette;
     unsigned char *main_palette;
     TbBool map_fade_prepared;
+    unsigned char map_fade_view_type;
+    int32_t map_fade_turns;
+    int64_t map_fade_start_time;
     int32_t palette_fade_step_pain;
     int32_t palette_fade_step_possession;
     short engine_window_width;
@@ -364,6 +361,8 @@ TbBool is_my_player(const struct PlayerInfo *player);
 struct UserState *get_user_state(NetUserId user);
 struct UserState *get_player_user_state(const struct PlayerInfo *player);
 struct UserState *get_local_user_state(void);
+void set_local_user_state_prediction(const struct UserState *ustate);
+const struct UserState *get_player_user_state_prediction(const struct PlayerInfo *player);
 uint32_t get_local_minimap_zoom(void);
 TbBool user_state_invalid(const struct UserState *ustate);
 int32_t user_zoom_min(const struct UserState *ustate, TbBool front_view);
@@ -382,6 +381,7 @@ TbBool player_is_roaming(PlayerNumber plyr_num);
 TbBool player_is_keeper(PlayerNumber plyr_num);
 TbBool player_is_neutral(PlayerNumber plyr_num);
 
+void set_user_work_state_kind(struct UserState *ustate, int32_t chosen_kind);
 void set_user_work_state(NetUserId user, short nwrk_state, int32_t chosen_kind);
 void set_user_view_type(NetUserId user, unsigned short nview);
 void reset_user_view_type(NetUserId user, unsigned short nview);
