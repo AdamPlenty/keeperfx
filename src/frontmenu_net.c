@@ -69,6 +69,10 @@ const char *net_join_error_text(enum NetJoinRejection reason)
         return get_string(GUIStr_NetSpectatorsFull);
     case NetJoin_SpectatorDesynced:
         return get_string(GUIStr_NetSpectatorDesynced);
+    case NetJoin_MapMismatch:
+        return get_string(GUIStr_NetUnsyncedMap);
+    case NetJoin_FxdataMismatch:
+        return get_string(GUIStr_NetVerifyFxdataSame);
     default:
         return NULL;
     }
@@ -490,7 +494,7 @@ void frontnet_draw_alliance_button(struct GuiButton *gbtn)
     const struct TbSprite *spr;
     plyr2_idx = gbtn->btype_value & LbBFeF_IntValueMask;
     plyr1_idx = gbtn->content.lval - 74;
-    if ((plyr1_idx == plyr2_idx) || (frontend_alliances & alliance_grid[plyr1_idx][plyr2_idx]))
+    if ((plyr1_idx == plyr2_idx) || ((frontend_alliances != -1) && (frontend_alliances & alliance_grid[plyr1_idx][plyr2_idx])))
       spr = get_frontend_sprite(GFS_scrollbar_indicator_std);
     else
       spr = get_frontend_sprite(GFS_slidrect_indicator_std1);
