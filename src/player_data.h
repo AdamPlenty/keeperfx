@@ -37,7 +37,7 @@ extern "C" {
 #define INVALID_PLAYER (&bad_player)
 #define INVALID_USER_STATE (&bad_user_state)
 
-#define PLAYER_MP_MESSAGE_LEN  64
+#define PLAYER_MP_MESSAGE_LEN  128
 
 #define MINIMAP_ZOOM_MIN       128
 #define MINIMAP_ZOOM_DEFAULT   256
@@ -149,6 +149,10 @@ struct CheatSelection
     unsigned char chosen_creature_kind;
     unsigned char chosen_hero_kind;
     unsigned char chosen_experience_level;
+    ThingIndex chosen_thing_idx;
+    GameTurn chosen_thing_creation;
+    RoomIndex chosen_room_idx;
+    GameTurn chosen_room_creation;
 };
 
 /*
@@ -170,14 +174,10 @@ struct PlayerInfo {
     unsigned char victory_state;
     PlayerBitFlags allied_players;
     PlayerBitFlags players_with_locked_ally_status;
-    short controlled_thing_idx;
-    GameTurn controlled_thing_creatrn;
     TbBool possession_lock;
     struct Wander wandr_within;
     struct Wander wandr_outside;
     short cta_flag_idx; /* Call-to-Arms banner */
-    short influenced_thing_idx;
-    GameTurn influenced_thing_creation;
     GameTurn power_of_cooldown_turn;
     GameTurn display_objective_turn;
     GameTurn slap_cooldown_until_turn; /* computer-only, prevents slapping too fast. */
@@ -253,6 +253,10 @@ struct UserState {
     /** An "instance" is a short, scripted animation. See: enum PlayerInstanceNum */
     unsigned char instance_num;
     uint32_t instance_remain_turns;
+    short influenced_thing_idx; /* thing the current instance/cheat applies to */
+    GameTurn influenced_thing_creation;
+    short controlled_thing_idx;
+    GameTurn controlled_thing_creatrn;
     MapCoord zoom_to_pos_x;
     MapCoord zoom_to_pos_y;
     /** Overcharge level while casting keeper powers. */
