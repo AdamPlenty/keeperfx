@@ -37,6 +37,9 @@
 #include "front_landview.h"
 #include "frontmenu_ingame_evnt.h"
 #include "thing_data.h"
+#include "thing_effects.h"
+#include "thing_creature.h"
+#include "config_textures.h"
 #include "thing_list.h"
 #include "thing_navigate.h"
 #include "thing_physics.h"
@@ -78,8 +81,9 @@ void thing_play_sample(struct Thing *thing, SoundSmplTblID smptbl_idx, SoundPitc
         return;
     if (GetCurrentSoundMasterVolume() <= 0)
         return;
-    if (thing_is_invalid(thing))
+    if ((thing == NULL) || (thing == INVALID_THING)) {
         return;
+    }
 
     // Apply sound volume setting to current sound's loudness level
     SoundVolume volume_scale = LbLerp(0, FULL_LOUDNESS, (float)settings.sound_volume/127.0); // [0-127] rescaled to [0-256]
@@ -122,6 +126,29 @@ void play_player_sample(PlayerNumber plyr_idx, SoundSmplTblID smptbl_idx)
     play_non_3d_sample(smptbl_idx);
 }
 
+void play_user_sample(int user, SoundSmplTblID smptbl_idx)
+{
+    if (!is_local_user(user)) {
+        return;
+    }
+    play_non_3d_sample(smptbl_idx);
+}
+
+TbBool is_local_action(PlayerNumber plyr_idx, int user)
+{
+    if (user == NO_USER) {
+        return is_my_player_number(plyr_idx);
+    }
+    return is_local_user(user);
+}
+
+void play_action_sample(PlayerNumber plyr_idx, int user, SoundSmplTblID smptbl_idx)
+{
+    if (is_local_action(plyr_idx, user)) {
+        play_non_3d_sample(smptbl_idx);
+    }
+}
+
 void play_sound_if_close_to_receiver(struct Coord3d *soundpos, SoundSmplTblID smptbl_idx)
 {
     if (SoundDisabled)
@@ -146,9 +173,13 @@ void play_creature_footstep(struct Thing *thing, SoundVolume loudness)
     }
     struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
     const int smpl_variant = foot_down_sound_sample_variant[4 * cctrl->footstep_variant + cctrl->footstep_counter];
+    unsigned char tileset = path_tileset_id(thing);
     SoundSmplTblID smpl_idx;
-    if (flag_is_set(thing->movement_flags, TMvF_IsOnSnow)) {
-        smpl_idx = snd_foot_snow + smpl_variant;
+    unsigned short foot_snd = tileset_footstep_snd[tileset];
+    if ((tileset != 0) && (foot_snd != 0)) {
+        int count = tileset_footstep_cnt[tileset];
+        int variant = (count > 1) ? smpl_variant % count : 0;
+        smpl_idx = foot_snd + variant;
     } else {
         smpl_idx = creature_sound_unified_id(crsound, smpl_variant);
     }
@@ -166,8 +197,7 @@ void play_creature_footstep(struct Thing *thing, SoundVolume loudness)
 
 void play_thing_walking(struct Thing *thing)
 {
-    struct PlayerInfo* myplyr = get_my_player();
-    struct Camera* cam = get_local_active_camera(myplyr);
+    struct Camera* cam = get_local_active_camera();
     { // Skip the thing if its distance to camera is too big
         MapSubtlDelta dist_x = coord_subtile(abs(cam->mappos.x.val - (MapCoordDelta)thing->mappos.x.val));
         MapSubtlDelta dist_y = coord_subtile(abs(cam->mappos.y.val - (MapCoordDelta)thing->mappos.y.val));
@@ -181,7 +211,7 @@ void play_thing_walking(struct Thing *thing)
         // Spectators don't do sounds
         return;
     }
-    long loudness = ((get_player_view_type(myplyr) == PVT_CreatureContrl) || (get_player_view_type(myplyr) == PVT_CreaturePasngr)) ? (FULL_LOUDNESS) : (FULL_LOUDNESS / 5);
+    long loudness = ((get_user_view_type(get_my_user()) == PVT_CreatureContrl) || (get_user_view_type(get_my_user()) == PVT_CreaturePasngr)) ? (FULL_LOUDNESS) : (FULL_LOUDNESS / 5);
     if (((thing->movement_flags & TMvF_Flying) != 0) && !thing_touching_floor(thing))
     {
         // Flying diptera has a buzzing noise sound
@@ -252,7 +282,7 @@ void find_nearest_rooms_for_ambient_sound(void)
     if ((SoundDisabled) || (GetCurrentSoundMasterVolume() <= 0))
         return;
     struct PlayerInfo* player = get_my_player();
-    struct Camera* cam = get_local_active_camera(player);
+    struct Camera* cam = get_local_active_camera();
     if (cam == NULL || LbIsFrozenOrPaused())
     {
         if (cam == NULL)
@@ -294,7 +324,7 @@ void find_nearest_rooms_for_ambient_sound(void)
 TbBool update_3d_sound_receiver(struct PlayerInfo* player)
 {
     SYNCDBG(7, "Starting");
-    struct Camera* cam = get_local_active_camera(player);
+    struct Camera* cam = get_local_active_camera();
     if (cam == NULL)
         return false;
     S3DSetSoundReceiverPosition(cam->mappos.x.val, cam->mappos.y.val, cam->mappos.z.val);

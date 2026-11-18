@@ -49,6 +49,7 @@
 #include "frontmenu_ingame_tabs.h"
 #include "room_treasure.h"
 #include "net_game.h"
+#include "power_hand.h"
 #include "post_inc.h"
 
 extern void clear_input(struct Packet* packet);
@@ -82,8 +83,7 @@ TbBool packets_process_cheats(
     switch (ustate->work_state)
     {
         case PSt_MkDigger:
-        ustate->render_roomspace = create_box_roomspace(ustate->render_roomspace, 1, 1, slb_x, slb_y);
-        allowed = tag_cursor_blocks_place_thing(user, stl_x, stl_y);
+        allowed = tag_cursor_blocks_for_work_state(user, stl_x, stl_y);
         clear_messages_from_player(MsgType_Player, ustate->cheatselection.chosen_player);
         targeted_message_add(MsgType_Player, ustate->cheatselection.chosen_player, plyr_idx, 1, "%d", ustate->cheatselection.chosen_experience_level + 1);
         if (((pckt->control_flags & PCtr_LBtnRelease) != 0) && ((pckt->control_flags & PCtr_MapCoordsValid) != 0))
@@ -100,8 +100,7 @@ TbBool packets_process_cheats(
         }
         break;
         case PSt_MkGoodCreatr:
-        ustate->render_roomspace = create_box_roomspace(ustate->render_roomspace, 1, 1, slb_x, slb_y);
-        allowed = tag_cursor_blocks_place_thing(user, stl_x, stl_y);
+        allowed = tag_cursor_blocks_for_work_state(user, stl_x, stl_y);
         clear_messages_from_player(MsgType_Player, ustate->cheatselection.chosen_player);
         if (ustate->cheatselection.chosen_hero_kind == 0)
         {
@@ -156,8 +155,7 @@ TbBool packets_process_cheats(
         }
         break;
         case PSt_MkGoldPot:
-        ustate->render_roomspace = create_box_roomspace(ustate->render_roomspace, 1, 1, slb_x, slb_y);
-        allowed = tag_cursor_blocks_place_thing(user, stl_x, stl_y);
+        allowed = tag_cursor_blocks_for_work_state(user, stl_x, stl_y);
         if (((pckt->control_flags & PCtr_LBtnRelease) != 0) && ((pckt->control_flags & PCtr_MapCoordsValid) != 0))
         {
             if (allowed)
@@ -193,14 +191,10 @@ TbBool packets_process_cheats(
         else
             ustate->thing_under_hand = thing->index;
         thing = thing_get(get_user_state(user)->controlled_thing_idx);
-        if (thing_is_creature(thing))
-        {
+        allowed = false;
+        if (thing_is_creature(thing)) {
             ustate->render_roomspace = create_box_roomspace(ustate->render_roomspace, 1, 1, slb_x, slb_y);
             allowed = tag_cursor_blocks_order_creature(user, stl_x, stl_y, thing);
-        }
-        else
-        {
-            allowed = false;
         }
         if ((pckt->control_flags & PCtr_LBtnRelease) != 0)
         {
@@ -248,8 +242,7 @@ TbBool packets_process_cheats(
         }
         break;
         case PSt_MkBadCreatr:
-        ustate->render_roomspace = create_box_roomspace(ustate->render_roomspace, 1, 1, slb_x, slb_y);
-        allowed = tag_cursor_blocks_place_thing(user, stl_x, stl_y);
+        allowed = tag_cursor_blocks_for_work_state(user, stl_x, stl_y);
         clear_messages_from_player(MsgType_Player, ustate->cheatselection.chosen_player);
         if (ustate->cheatselection.chosen_creature_kind == 0)
         {
@@ -301,8 +294,8 @@ TbBool packets_process_cheats(
             if (((pckt->control_flags & PCtr_LBtnRelease) != 0) && ((pckt->control_flags & PCtr_MapCoordsValid) != 0))
             {
                 pwkind = ustate->chosen_power_kind;
-                i = get_power_overcharge_level(user);
-                magic_use_power_direct(plyr_idx,pwkind,i,stl_x, stl_y,INVALID_THING, PwMod_CastForFree);
+                i = get_power_overcharge_level(ustate);
+                magic_use_power_direct(plyr_idx,user,pwkind,i,stl_x, stl_y,INVALID_THING, PwMod_CastForFree);
                 unset_packet_control(pckt, PCtr_LBtnRelease);
             }
             break;
@@ -319,8 +312,8 @@ TbBool packets_process_cheats(
             ustate->thing_under_hand = thing->index;
             if ((pckt->control_flags & PCtr_LBtnRelease) != 0)
             {
-                KeepPwrLevel power_level = get_power_overcharge_level(user);
-                magic_use_power_direct(plyr_idx,pwkind,power_level,stl_x,stl_y,thing,PwMod_CastForFree);
+                KeepPwrLevel power_level = get_power_overcharge_level(ustate);
+                magic_use_power_direct(plyr_idx,user,pwkind,power_level,stl_x,stl_y,thing,PwMod_CastForFree);
                 unset_packet_control(pckt, PCtr_LBtnRelease);
             }
             break;
@@ -401,8 +394,7 @@ TbBool packets_process_cheats(
         }
         break;
         case PSt_StealSlab:
-        ustate->render_roomspace = create_box_roomspace(ustate->render_roomspace, 1, 1, slb_x, slb_y);
-        allowed = tag_cursor_blocks_steal_slab(user, stl_x, stl_y);
+        allowed = tag_cursor_blocks_for_work_state(user, stl_x, stl_y);
         clear_messages_from_player(MsgType_Player, ustate->cheatselection.chosen_player);
         targeted_message_add(MsgType_Player, ustate->cheatselection.chosen_player, plyr_idx, 1, str);
         if (((pckt->control_flags & PCtr_LBtnRelease) != 0) && ((pckt->control_flags & PCtr_MapCoordsValid) != 0))
@@ -586,7 +578,7 @@ TbBool packets_process_cheats(
                 thing = thing_get(get_user_state(user)->controlled_thing_idx);
                 if ((pckt->control_flags & PCtr_RBtnRelease) != 0)
                 {
-                    if (is_my_player(player))
+                    if (is_local_user(user))
                     {
                         turn_off_query_menus();
                         turn_on_main_panel_menu();
@@ -594,10 +586,10 @@ TbBool packets_process_cheats(
                     set_user_instance(user, PI_UnqueryCrtr, 0);
                     unset_packet_control(pckt, PCtr_RBtnRelease);
                 } else
-                if (creature_is_dying(thing))
+                if (creature_is_dying(thing) || thing_held_by_other_user(user, thing)) // e.g. a co-user picked it up
                 {
                     set_user_instance(user, PI_UnqueryCrtr, 0);
-                    if (is_my_player(player))
+                    if (is_local_user(user))
                     {
                         turn_off_query_menus();
                         turn_on_main_panel_menu();
@@ -634,8 +626,7 @@ TbBool packets_process_cheats(
             break;
         case PSt_PlaceTerrain:
         {
-            ustate->render_roomspace = create_box_roomspace(ustate->render_roomspace, 1, 1, slb_x, slb_y);
-            tag_cursor_blocks_place_terrain(plyr_idx, stl_x, stl_y);
+            tag_cursor_blocks_for_work_state(user, stl_x, stl_y);
             struct SlabConfigStats* slab_cfgstats;
             clear_messages_from_player(MsgType_Player, ustate->cheatselection.chosen_player);
             struct SlabConfigStats *slabst = get_slab_kind_stats(ustate->cheatselection.chosen_terrain_kind);
@@ -925,16 +916,17 @@ TbBool process_user_global_cheats_packet_action(NetUserId user, struct Packet* p
   }
 }
 
-TbBool process_players_dungeon_control_cheats_packet_action(PlayerNumber plyr_idx, struct Packet* pckt)
+TbBool process_user_dungeon_control_cheats_packet_action(NetUserId user, struct Packet* pckt)
 {
+    const PlayerNumber plyr_idx = get_net_user_player_number(user);
     struct PlayerInfo* player = get_player(plyr_idx);
-    struct UserState* ustate = get_player_user_state(player);
+    struct UserState* ustate = get_user_state(user);
     MapCoord x, y;
     struct Thing* thing;
     MapSubtlCoord stl_x, stl_y;
     MapSlabCoord slb_x, slb_y;
     struct Coord3d pos;
-    if (!user_cheats_allowed(get_player_primary_user(player)))
+    if (!user_cheats_allowed(user))
         return false;
     switch (pckt->action)
     {
@@ -1061,6 +1053,7 @@ TbBool process_players_dungeon_control_cheats_packet_action(PlayerNumber plyr_id
             {
                     struct Dungeon* dungeon = get_dungeon(plyr_idx);
                     dungeon->lvstats.keeper_destroyed[pckt->actn_par1]++;
+                    dungeon->lvstats.keeper_destroyed[ALL_PLAYERS]++;
                     dungeon->lvstats.keepers_destroyed++;
             }
             break;
@@ -1073,6 +1066,7 @@ TbBool process_players_dungeon_control_cheats_packet_action(PlayerNumber plyr_id
             {
                 thing->health = 0;
                 dungeon->lvstats.keeper_destroyed[pckt->actn_par1]++;
+                dungeon->lvstats.keeper_destroyed[ALL_PLAYERS]++;
                 dungeon->lvstats.keepers_destroyed++;
             }
             struct Thing* heartng = find_players_backup_dungeon_heart(pckt->actn_par1);
@@ -1080,6 +1074,7 @@ TbBool process_players_dungeon_control_cheats_packet_action(PlayerNumber plyr_id
             {
                 heartng->health = 0;
                 dungeon->lvstats.keeper_destroyed[pckt->actn_par1]++;
+                dungeon->lvstats.keeper_destroyed[ALL_PLAYERS]++;
                 dungeon->lvstats.keepers_destroyed++;
             }
             break;

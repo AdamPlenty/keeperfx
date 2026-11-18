@@ -70,6 +70,7 @@
 #include "front_input.h"
 #include "game_legacy.h"
 #include "local_camera.h"
+#include "local_hand.h"
 #include "local_possession.h"
 #include "net_game.h"
 #include "net_spectator.h"
@@ -768,7 +769,7 @@ void gui_area_spell_button(struct GuiButton *gbtn)
             int i = powerst->work_state;
             if (((i == PSt_CallToArms) && player_uses_power_call_to_arms(my_player_number))
              || ((i == PSt_SightOfEvil) && player_uses_power_sight(my_player_number))
-             || ((pwkind == PwrK_OBEY) && player_uses_power_obey(my_player_number))) {
+             || (player_uses_power_obey(my_player_number) && (pwkind == dungeon->must_obey_idx))) {
                 draw_gui_panel_sprite_left(gbtn->scr_pos_x, gbtn->scr_pos_y, ps_units_per_px, GPS_rpanel_frame_portrt_light);
             }
             GoldAmount price = compute_power_price(dungeon->owner, pwkind, 0);
@@ -1938,8 +1939,9 @@ void gui_area_instance_button(struct GuiButton *gbtn)
     spr_idx = gbtn->sprite_idx;
     // Show disabled icon if instance is on cooldown or creature is frozen.
     TbBool disabled;
-    if (!has_reset)
+    if (!has_reset || thing_is_picked_up(ctrltng))
     {
+        // a co-user's hand holding the creature counts too
         disabled = true;
     }
     else if (creature_under_spell_effect(ctrltng, CSAfF_Freeze))
@@ -2038,6 +2040,7 @@ void gui_activity_background(struct GuiMenu *gmnu)
                 break;
             }
         }
+        apply_local_hand_to_activity_counts(crmodel, &activity_list[4*i]);
     }
     RendererAddDrawFlags(Lb_SPRITE_TRANSPAR4);
     LbDrawBox(gmnu->pos_x + scale_ui_value(2),gmnu->pos_y + scale_ui_value(218),scale_ui_value(134),scale_ui_value(24),colours[0][0][0]);
@@ -2372,7 +2375,7 @@ static int get_active_computer_assist_slot(void)
     struct Computer2* comp = get_computer_player(player->id_number);
     if (computer_player_invalid(comp) || dungeon_invalid(comp->dungeon))
         return -1;
-    const struct UserState* ustate = get_player_user_state(player);
+    const struct UserState* ustate = get_local_user_state();
     uint32_t preferred_kind = user_state_invalid(ustate) ? 0 : ustate->prefs[UPref_StartingComputerAssistantKind];
     int first_match = -1;
     for (int i = 0; i < COMPUTER_ASSIST_TYPES_COUNT; i++)
@@ -2721,8 +2724,7 @@ void update_room_tab_to_config(void)
         ibtn->draw_call = gui_area_room_button;
     }
     // Update active menu
-    struct PlayerInfo *player = get_my_player();
-    if (get_player_view_type(player) == PVT_DungeonTop)
+    if (get_user_view_type(get_my_user()) == PVT_DungeonTop)
     {
         if (menu_is_active(GMnu_ROOM))
         {
@@ -2820,8 +2822,7 @@ void update_trap_tab_to_config(void)
         }
     }
     // Update active menu
-    struct PlayerInfo *player = get_my_player();
-    if (get_player_view_type(player) == PVT_DungeonTop)
+    if (get_user_view_type(get_my_user()) == PVT_DungeonTop)
     {
         if ( menu_is_active(GMnu_TRAP) )
         {
@@ -2903,30 +2904,29 @@ void draw_placefiller(long scr_x, long scr_y, long units_per_px)
     LbSpriteDrawResized(scr_x, scr_y, units_per_px, spr);
 }
 
-void gui_query_next_creature_of_owner_and_model(struct GuiButton *gbtn)
+static void query_next_creature_of_owner(TbBool same_model)
 {
-    struct PlayerInfo *player = get_my_player();
-    struct Thing *creatng = thing_get(get_local_user_state()->influenced_thing_idx);
-    ThingIndex next_creature = get_index_of_next_creature_of_owner_and_model(creatng, creatng->owner, creatng->model, player);
-    if (next_creature != get_local_user_state()->influenced_thing_idx)
-    {
-        struct Packet* pckt = get_local_packet();
-        set_packet_action(pckt, PckA_PlyrQueryCreature, next_creature, 0x02, 0, 0);
+    ThingIndex queried_creature = get_local_user_state_prediction()->influenced_thing_idx;
+    struct Thing *creatng = thing_get(queried_creature);
+    ThingModel crmodel = 0;
+    if (same_model) {
+        crmodel = creatng->model;
+    }
+    ThingIndex next_creature = get_index_of_next_creature_of_owner_and_model(creatng, creatng->owner, crmodel, get_my_user());
+    if (next_creature != queried_creature) {
+        set_packet_action(get_local_packet(), PckA_PlyrQueryCreature, next_creature, 0x02, 0, 0);
         play_non_3d_sample(snd_tab_click);
     }
 }
 
+void gui_query_next_creature_of_owner_and_model(struct GuiButton *gbtn)
+{
+    query_next_creature_of_owner(true);
+}
+
 void gui_query_next_creature_of_owner(struct GuiButton *gbtn)
 {
-    struct PlayerInfo *player = get_my_player();
-    struct Thing *creatng = thing_get(get_local_user_state()->influenced_thing_idx);
-    ThingIndex next_creature = get_index_of_next_creature_of_owner_and_model(creatng, creatng->owner, 0, player);
-    if (next_creature != get_local_user_state()->influenced_thing_idx)
-    {
-        struct Packet* pckt = get_local_packet();
-        set_packet_action(pckt, PckA_PlyrQueryCreature, next_creature, 0x02, 0, 0);
-        play_non_3d_sample(snd_tab_click);
-    }
+    query_next_creature_of_owner(false);
 }
 
 void maintain_spell_next_page_button(struct GuiButton *gbtn)

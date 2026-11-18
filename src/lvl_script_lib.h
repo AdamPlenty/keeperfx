@@ -315,6 +315,8 @@ enum ScriptVariables {
   SVar_PLAYER_SCORE                    = 89,
   SVar_MANAGE_SCORE                    = 90,
   SVar_CONTROLLED_THING                = 91,
+  SVar_BATTLES_LOST_VS                 = 92,
+  SVar_BATTLES_WON_VS                  = 93,
  };
 
 extern const struct NamedCommand player_desc[];
@@ -335,7 +337,7 @@ extern const struct NamedCommand variable_desc[];
 extern const struct NamedCommand dk1_variable_desc[];
 extern const struct NamedCommand fill_desc[];
 extern const struct NamedCommand set_door_desc[];
-extern const struct NamedCommand texture_pack_desc[];
+extern struct NamedCommand texture_pack_desc[];
 extern const struct NamedCommand locked_desc[];
 
 ThingModel parse_creature_name(const char *creature_name);

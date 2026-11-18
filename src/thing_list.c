@@ -1514,14 +1514,18 @@ void setup_computer_player(int plr_idx)
     }
 }
 
-void setup_computer_players(void)
+void setup_computer_players(PlayerBitFlags zombie_players)
 {
     for (int plr_idx = 0; plr_idx < PLAYERS_COUNT; plr_idx++)
     {
         struct PlayerInfo* player = get_player(plr_idx);
-        if (!player_exists(player))
-        {
-          setup_computer_player(plr_idx);
+        if (player_exists(player)) {
+            continue;
+        }
+        if (flag_is_set(zombie_players, to_flag(plr_idx))) {
+            script_support_setup_player_as_zombie_keeper(plr_idx);
+        } else {
+            setup_computer_player(plr_idx);
         }
     }
 }
@@ -2756,6 +2760,29 @@ GoldAmount compute_player_payday_total(const struct Dungeon *dungeon)
             break;
         }
     }
+    i = dungeon->digger_list_start;
+    while (i != 0)
+    {
+        struct Thing* thing = thing_get(i);
+        TRACE_THING(thing);
+        struct CreatureControl* cctrl = creature_control_get_from_thing(thing);
+        if (thing_is_invalid(thing) || creature_control_invalid(cctrl))
+        {
+            ERRORLOG("Jump to invalid creature (%d) detected for %s.", i, player_code_name(dungeon->owner));
+            break;
+        }
+        i = cctrl->players_next_creature_idx;
+        // Thing list loop body
+        total_pay += calculate_correct_creature_pay(thing);
+        // Thing list loop body ends
+        k++;
+        if (k > CREATURES_COUNT)
+        {
+            ERRORLOG("Infinite loop detected when sweeping diggers list");
+            break;
+        }
+    }
+
     SYNCDBG(19,"Finished");
     return total_pay;
 }
@@ -4255,6 +4282,9 @@ TbBool setup_creature_leave_or_die_if_possible(struct Thing *thing)
                     return false;
                 }
                 dump_thing_held_by_any_player(thing);
+                if (!thing_exists(thing)) {
+                    return true;
+                }
             }
             // Setup leave state or kill the creature
             setup_creature_leaves_or_dies(thing);
@@ -4279,6 +4309,9 @@ TbBool setup_creature_die_if_not_in_custody(struct Thing *thing)
                 return false;
             }
             dump_thing_held_by_any_player(thing);
+            if (!thing_exists(thing)) {
+                return true;
+            }
         }
         // And kill it
         kill_creature(thing, INVALID_THING, -1, CrDed_Default);
@@ -4430,7 +4463,7 @@ void break_mapwho_infinite_chain(const struct Map *mapblk)
     WARNLOG("No change performed");
 }
 
-ThingIndex get_index_of_next_creature_of_owner_and_model(struct Thing *current_creature, PlayerNumber owner, ThingModel crmodel, struct PlayerInfo *player)
+ThingIndex get_index_of_next_creature_of_owner_and_model(struct Thing *current_creature, PlayerNumber owner, ThingModel crmodel, NetUserId user)
 {
     unsigned long k = 0;
     ThingIndex i = current_creature->index;
@@ -4452,7 +4485,7 @@ ThingIndex get_index_of_next_creature_of_owner_and_model(struct Thing *current_c
             {
                 if ( (thing->model == crmodel) || (crmodel == 0) )
                 {
-                    if (creature_can_be_queried(player, thing))
+                    if (creature_can_be_queried(user, thing))
                     {
                         return thing->index;
                     }

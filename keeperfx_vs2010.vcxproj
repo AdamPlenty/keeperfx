@@ -198,6 +198,7 @@
     <ClCompile Include="src\kfx\lense\PaletteEffect.cpp" />
     <ClCompile Include="src\light_data.c" />
     <ClCompile Include="src\local_camera.c" />
+    <ClCompile Include="src\local_hand.c" />
     <ClCompile Include="src\local_possession.c" />
     <ClCompile Include="src\lua_api.c" />
     <ClCompile Include="src\lua_api_camera.c" />
@@ -229,7 +230,8 @@
     <ClCompile Include="src\map_locations.c" />
     <ClCompile Include="src\map_utils.c" />
     <ClCompile Include="src\moonphase.c" />
-    <ClCompile Include="src\net_checksums.c" />
+    <ClCompile Include="src\net_checksum_turn.c" />
+    <ClCompile Include="src\net_filecheck.c" />
     <ClCompile Include="src\net_exchange_common.c" />
     <ClCompile Include="src\net_exchange_gameplay.c" />
     <ClCompile Include="src\net_spectator.c" />
@@ -325,6 +327,7 @@
     <ClCompile Include="src\kfx\save\core\save_codec.cpp" />
     <ClCompile Include="src\kfx\save\core\save_config_overlay.cpp" />
     <ClCompile Include="src\kfx\save\SaveCatalogue.cpp" />
+    <ClCompile Include="src\kfx\save\SaveCampaignProgress.cpp" />
     <ClCompile Include="src\kfx\save\SaveContinue.cpp" />
     <ClCompile Include="src\kfx\save\SaveGameFile.cpp" />
     <ClCompile Include="src\kfx\save\SaveManager.cpp" />
@@ -435,7 +438,8 @@
     <ClInclude Include="src\kernel_memtracker.h" />
     <ClInclude Include="src\lua_api_lens.h" />
     <ClInclude Include="src\lua_api_sound.h" />
-    <ClInclude Include="src\net_checksums.h" />
+    <ClInclude Include="src\net_checksum_turn.h" />
+    <ClInclude Include="src\net_filecheck.h" />
     <ClInclude Include="src\net_exchange_common.h" />
     <ClInclude Include="src\net_exchange_gameplay.h" />
     <ClInclude Include="src\net_spectator.h" />
@@ -557,6 +561,7 @@
     <ClInclude Include="src\kfx\lense\PaletteEffect.h" />
     <ClInclude Include="src\light_data.h" />
     <ClInclude Include="src\local_camera.h" />
+    <ClInclude Include="src\local_hand.h" />
     <ClInclude Include="src\local_possession.h" />
     <ClInclude Include="src\lua_api.h" />
     <ClInclude Include="src\lua_base.h" />

@@ -165,7 +165,7 @@ static TbBool console_cmd_cheats_allowed(PlayerNumber plyr_idx)
 
 static struct Thing *console_cmd_selected_thing(PlayerNumber plyr_idx)
 {
-    const struct UserState *ustate = get_player_user_state(console_cmd_player(plyr_idx));
+    const struct UserState *ustate = get_player_primary_user_state(console_cmd_player(plyr_idx));
     if (user_state_invalid(ustate))
         return INVALID_THING;
     struct Thing *thing = thing_get(ustate->cheatselection.chosen_thing_idx);
@@ -176,7 +176,7 @@ static struct Thing *console_cmd_selected_thing(PlayerNumber plyr_idx)
 
 static struct Room *console_cmd_selected_room(PlayerNumber plyr_idx)
 {
-    const struct UserState *ustate = get_player_user_state(console_cmd_player(plyr_idx));
+    const struct UserState *ustate = get_player_primary_user_state(console_cmd_player(plyr_idx));
     if (user_state_invalid(ustate))
         return INVALID_ROOM;
     struct Room *room = room_get(ustate->cheatselection.chosen_room_idx);
@@ -209,12 +209,12 @@ static void console_cmd_cursor(MapCoord *x, MapCoord *y)
 void console_cmd_default_cursor(const struct PlayerInfo *player, MapCoord *x, MapCoord *y)
 {
     if (player == &local_observer_player) {
-        const struct Camera *cam = get_local_active_camera(&local_observer_player);
+        const struct Camera *cam = get_local_active_camera();
         *x = cam->mappos.x.val;
         *y = cam->mappos.y.val;
         return;
     }
-    const struct UserState *ustate = get_player_user_state(player);
+    const struct UserState *ustate = get_player_primary_user_state(player);
     if (user_state_invalid(ustate)) {
         *x = 0;
         *y = 0;
@@ -625,6 +625,16 @@ TbBool cmd_network_stats(PlayerNumber plyr_idx, char * args)
     return true;
 }
 
+TbBool cmd_disconnect(PlayerNumber plyr_idx, char * args)
+{
+    NETLOG("Simulating a lost connection");
+    netstate.simulating_disconnect = true;
+    turn_off_all_menus();
+    free_swipe_graphic();
+    process_user_leave_game_packet(get_local_user());
+    return true;
+}
+
 TbBool cmd_quit(PlayerNumber plyr_idx, char * args)
 {
     quit_game = 1;
@@ -995,6 +1005,15 @@ TbBool cmd_comp_kill(PlayerNumber plyr_idx, char * args)
         return false;
     }
     struct Thing * thing = get_player_soul_container(id);
+    thing->health = 0;
+    return true;
+}
+
+TbBool cmd_gg(PlayerNumber plyr_idx, char* args)
+{
+    struct Thing* thing = get_player_soul_container(plyr_idx);
+    if (thing_is_invalid(thing))
+        return false;
     thing->health = 0;
     return true;
 }
@@ -1632,9 +1651,9 @@ TbBool cmd_place_slab(PlayerNumber plyr_idx, char * args)
             slbkind = roomst->assigned_slab;
         } else {
             if (strcasecmp(pr1str, "Earth") == 0) {
-                slbkind = rand() % (4 - 2) + 2;
+                slbkind = GAME_RANDOM(4 - 2) + 2;
             } else if ((strcasecmp(pr1str, "Reinforced") == 0) || (strcasecmp(pr1str, "Fortified") == 0)) {
-                slbkind = rand() % (9 - 4) + 4;
+                slbkind = GAME_RANDOM(9 - 4) + 4;
             } else if (strcasecmp(pr1str, "Claimed") == 0) {
                 slbkind = SlbT_CLAIMED;
             } else if ((strcasecmp(pr1str, "Rock") == 0) || (strcasecmp(pr1str, "Impenetrable") == 0)) {
@@ -1759,6 +1778,7 @@ TbBool cmd_player_heart_health(PlayerNumber plyr_idx, char * args)
     if (thing->health <= 0) {
         struct Dungeon * dungeon = get_dungeon(plyr_idx);
         dungeon->lvstats.keeper_destroyed[id]++;
+        dungeon->lvstats.keeper_destroyed[ALL_PLAYERS]++;
         dungeon->lvstats.keepers_destroyed++;
     }
     return true;
@@ -2036,7 +2056,7 @@ TbBool cmd_get_thing(PlayerNumber plyr_idx, char * args)
     targeted_message_add(MsgType_Local, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "Got thing ID %d %s",
                             thing->index,
                             thing_class_and_model_name(thing->class_id, thing->model));
-    struct UserState *ustate = get_player_user_state(player);
+    struct UserState *ustate = get_player_primary_user_state(player);
     if (user_state_invalid(ustate))
         return false;
     ustate->cheatselection.chosen_thing_idx = thing->index;
@@ -2128,7 +2148,7 @@ TbBool cmd_get_room(PlayerNumber plyr_idx, char * args)
         return false;
     }
     targeted_message_add(MsgType_Local, plyr_idx, plyr_idx, GUI_MESSAGES_DELAY, "Got room ID %d", room->index);
-    struct UserState *ustate = get_player_user_state(player);
+    struct UserState *ustate = get_player_primary_user_state(player);
     if (user_state_invalid(ustate))
         return false;
     ustate->cheatselection.chosen_room_idx = room->index;
@@ -2642,120 +2662,134 @@ struct ConsoleCommand {
 };
 
 static const struct ConsoleCommand console_commands[] = {
-    { "stats", cmd_stats, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "fps", cmd_fps_turn, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_Unrestricted },
-    { "fps.draw", cmd_fps_draw, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "frametime", cmd_frametime, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "ft", cmd_frametime, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "frametime.max", cmd_frametime_max, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "ft.max", cmd_frametime_max, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "netstats", cmd_network_stats, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "quit", cmd_quit, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_Unrestricted },
-    { "time", cmd_time, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "timer.toggle", cmd_timer_toggle, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "timer.switch", cmd_timer_switch, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "turn", cmd_turn, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "pause", cmd_pause, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_Unrestricted },
-    { "step", cmd_step, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_Unrestricted },
-    { "game.save", cmd_game_save, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_Unrestricted },
-    { "game.load", cmd_game_load, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_Unrestricted },
-    { "game.check", cmd_game_check, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "cls", cmd_cls, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "ver", cmd_ver, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "volume", cmd_volume, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "volume.sound", cmd_volume_sound, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "volume.sfx", cmd_volume_sound, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "volume.music", cmd_volume_music, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "volume.soundtrack", cmd_volume_music, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "compuchat", cmd_compuchat, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "comp.procs", cmd_comp_procs, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_CheatsRequired },
-    { "comp.events", cmd_comp_events, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "comp.checks", cmd_comp_checks, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_CheatsRequired },
-    { "reveal", cmd_reveal, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "conceal", cmd_conceal, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "comp.kill", cmd_comp_kill, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "player.score", cmd_player_score, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "player.flag", cmd_player_flag, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "comp.me", cmd_comp_me, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "magic.instance", cmd_magic_instance, param_completion_for_magic_instance, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "give.trap", cmd_give_trap, param_completion_for_give_trap, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "trap.give", cmd_give_trap, param_completion_for_give_trap, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "give.door", cmd_give_door, param_completion_for_give_door, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "door.give", cmd_give_door, param_completion_for_give_door, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "map.pool", cmd_map_pool, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.pool", cmd_map_pool, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "gold.create", cmd_create_gold, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "create.gold", cmd_create_gold, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "look", cmd_look, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "object.create", cmd_create_object, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "create.object", cmd_create_object, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.create", cmd_create_creature, param_completion_for_create_creature, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "create.creature", cmd_create_creature, param_completion_for_create_creature, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "thing.create", cmd_create_thing, param_completion_for_create_thing, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "create.thing", cmd_create_thing, param_completion_for_create_thing, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "slab.place", cmd_place_slab, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "place.slab", cmd_place_slab, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "room.available", cmd_room_available, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "power.give", cmd_give_power, param_completion_for_give_power, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "spell.give", cmd_give_power, param_completion_for_give_power, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "player.heart.health", cmd_player_heart_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.available", cmd_creature_available, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.addhealth", cmd_creature_add_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.health.add", cmd_creature_add_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.subhealth", cmd_creature_sub_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.health.sub", cmd_creature_sub_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "digger.sendto", cmd_send_digger_to, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.instance.set", cmd_set_creature_instance, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.state.set", cmd_set_creature_state, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.job.set", cmd_set_creature_job, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "mapwho.info", cmd_mapwho_info, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "thing.info", cmd_thing_info, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.attackheart", cmd_creature_attack_heart, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "player.addgold", cmd_player_gold_add, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "player.gold.add", cmd_player_gold_add, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "cursor.pos", cmd_cursor_pos, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "thing.get", cmd_get_thing, NULL, CmdS_SyncedOwnPlayer, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "thing.show_id", cmd_thing_show_id, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "thing.health", cmd_thing_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "thing.move", cmd_move_thing, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "thing.destroy", cmd_destroy_thing, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "room.get", cmd_get_room, NULL, CmdS_SyncedOwnPlayer, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "room.health", cmd_room_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "slab.health", cmd_slab_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.pool.add", cmd_creature_pool_add, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.pool.sub", cmd_creature_pool_sub, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.pool.remove", cmd_creature_pool_sub, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.level", cmd_creature_level, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.freeze", cmd_freeze_creature, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.slow", cmd_slow_creature, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "music.set", cmd_set_music, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "zoomto.slabcoord", cmd_zoom_to_slabcoord, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "zoomto.subtilecoord", cmd_zoom_to_subtilecoord, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "bug.toggle", cmd_toggle_classic_bug, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "actionpoint.pos", cmd_get_action_point_pos, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "actionpoint.zoomto", cmd_zoom_to_action_point, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "zoomto.actionpoint", cmd_zoom_to_action_point, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "actionpoint.reset", cmd_reset_action_point, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "herogate.zoomto", cmd_zoom_to_hero_gate, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "zoomto.herogate", cmd_zoom_to_hero_gate, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "sound.test", cmd_sound_test, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "speech.test", cmd_speech_test, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "player.color", cmd_player_colour, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "player.colour", cmd_player_colour, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "possession.lock", cmd_possession_lock, NULL, CmdS_SyncedOwnPlayer, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "possession.unlock", cmd_possession_unlock, NULL, CmdS_SyncedOwnPlayer, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "string.show", cmd_string_show, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "quick.show", cmd_quick_show, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "toggle.tooltip.land.coord", cmd_toggle_tooltip_land_coord, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
-    { "toggle.lights", cmd_toggle_lights, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "lua", cmd_lua, NULL, CmdS_Synced, CmdM_SingleplayerOnly, CmdC_CheatsRequired },
-    { "luatypedump", cmd_luatypedump, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "cheat.menu", cmd_cheat_menu, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "creature.chicken", cmd_chicken_creature, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "dbc", cmd_dbc, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
-    { "resync", cmd_resync, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired }
+   { "actionpoint.pos", cmd_get_action_point_pos, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "actionpoint.reset", cmd_reset_action_point, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "actionpoint.zoomto", cmd_zoom_to_action_point, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "bug.toggle", cmd_toggle_classic_bug, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "cheat.menu", cmd_cheat_menu, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "cls", cmd_cls, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "comp.checks", cmd_comp_checks, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_CheatsRequired },
+   { "comp.events", cmd_comp_events, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "comp.kill", cmd_comp_kill, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "comp.me", cmd_comp_me, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "comp.procs", cmd_comp_procs, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_CheatsRequired },
+   { "compuchat", cmd_compuchat, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "conceal", cmd_conceal, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "create.creature", cmd_create_creature, param_completion_for_create_creature, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "create.gold", cmd_create_gold, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "create.object", cmd_create_object, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "create.thing", cmd_create_thing, param_completion_for_create_thing, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.addhealth", cmd_creature_add_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.attackheart", cmd_creature_attack_heart, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.available", cmd_creature_available, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.chicken", cmd_chicken_creature, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.create", cmd_create_creature, param_completion_for_create_creature, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.freeze", cmd_freeze_creature, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.health.add", cmd_creature_add_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.health.sub", cmd_creature_sub_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.instance.set", cmd_set_creature_instance, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.job.set", cmd_set_creature_job, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.level", cmd_creature_level, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.pool", cmd_map_pool, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.pool.add", cmd_creature_pool_add, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.pool.remove", cmd_creature_pool_sub, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.pool.sub", cmd_creature_pool_sub, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.slow", cmd_slow_creature, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.state.set", cmd_set_creature_state, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "creature.subhealth", cmd_creature_sub_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "cursor.pos", cmd_cursor_pos, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "dbc", cmd_dbc, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "digger.sendto", cmd_send_digger_to, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "disconnect", cmd_disconnect, NULL, CmdS_Personal, CmdM_MultiplayerOnly, CmdC_Unrestricted },
+   { "door.give", cmd_give_door, param_completion_for_give_door, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "fps", cmd_fps_turn, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_Unrestricted },
+   { "fps.draw", cmd_fps_draw, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "frametime", cmd_frametime, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "frametime.max", cmd_frametime_max, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "ft", cmd_frametime, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "ft.max", cmd_frametime_max, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "game.check", cmd_game_check, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "game.load", cmd_game_load, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_Unrestricted },
+   { "game.save", cmd_game_save, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_Unrestricted },
+   { "gg", cmd_gg, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "give.door", cmd_give_door, param_completion_for_give_door, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "give.trap", cmd_give_trap, param_completion_for_give_trap, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "gold.create", cmd_create_gold, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "herogate.zoomto", cmd_zoom_to_hero_gate, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "look", cmd_look, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "lua", cmd_lua, NULL, CmdS_Synced, CmdM_SingleplayerOnly, CmdC_CheatsRequired },
+   { "luatypedump", cmd_luatypedump, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "magic.instance", cmd_magic_instance, param_completion_for_magic_instance, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "map.pool", cmd_map_pool, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "mapwho.info", cmd_mapwho_info, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "music.set", cmd_set_music, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "netstats", cmd_network_stats, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "object.create", cmd_create_object, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "pause", cmd_pause, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_Unrestricted },
+   { "place.slab", cmd_place_slab, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "player.addgold", cmd_player_gold_add, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "player.color", cmd_player_colour, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "player.colour", cmd_player_colour, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "player.flag", cmd_player_flag, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "player.gold.add", cmd_player_gold_add, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "player.heart.health", cmd_player_heart_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "player.score", cmd_player_score, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "possession.lock", cmd_possession_lock, NULL, CmdS_SyncedOwnPlayer, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "possession.unlock", cmd_possession_unlock, NULL, CmdS_SyncedOwnPlayer, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "power.give", cmd_give_power, param_completion_for_give_power, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "quick.show", cmd_quick_show, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "quit", cmd_quit, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_Unrestricted },
+   { "resync", cmd_resync, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "reveal", cmd_reveal, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "room.available", cmd_room_available, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "room.get", cmd_get_room, NULL, CmdS_SyncedOwnPlayer, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "room.health", cmd_room_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "slab.health", cmd_slab_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "slab.place", cmd_place_slab, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "sound.test", cmd_sound_test, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "speech.test", cmd_speech_test, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "spell.give", cmd_give_power, param_completion_for_give_power, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "stats", cmd_stats, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "step", cmd_step, NULL, CmdS_Personal, CmdM_SingleplayerOnly, CmdC_Unrestricted },
+   { "string.show", cmd_string_show, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "thing.create", cmd_create_thing, param_completion_for_create_thing, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "thing.destroy", cmd_destroy_thing, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "thing.get", cmd_get_thing, NULL, CmdS_SyncedOwnPlayer, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "thing.health", cmd_thing_health, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "thing.info", cmd_thing_info, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "thing.move", cmd_move_thing, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "thing.show_id", cmd_thing_show_id, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "time", cmd_time, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "timer.switch", cmd_timer_switch, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "timer.toggle", cmd_timer_toggle, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "toggle.lights", cmd_toggle_lights, NULL, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "toggle.tooltip.land.coord", cmd_toggle_tooltip_land_coord, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "trap.give", cmd_give_trap, param_completion_for_give_trap, CmdS_Synced, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "turn", cmd_turn, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "ver", cmd_ver, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "volume", cmd_volume, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "volume.music", cmd_volume_music, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "volume.sfx", cmd_volume_sound, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "volume.sound", cmd_volume_sound, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "volume.soundtrack", cmd_volume_music, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_Unrestricted },
+   { "zoomto.actionpoint", cmd_zoom_to_action_point, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "zoomto.herogate", cmd_zoom_to_hero_gate, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "zoomto.slabcoord", cmd_zoom_to_slabcoord, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired },
+   { "zoomto.subtilecoord", cmd_zoom_to_subtilecoord, NULL, CmdS_Personal, CmdM_SingleplayerAndMultiplayer, CmdC_CheatsRequired }
 };
 static const int console_command_count = sizeof(console_commands) / sizeof(*console_commands);
+
+TbBool cmd_is_synced(const char *msg)
+{
+    msg += strspn(msg, " ");
+    size_t name_length = strcspn(msg, " ");
+    for (int i = 0; i < console_command_count; ++i) {
+        if ((strncasecmp(msg, console_commands[i].name, name_length) == 0) && (console_commands[i].name[name_length] == '\0')) {
+            return console_commands[i].scope != CmdS_Personal;
+        }
+    }
+    return false;
+}
 
 static const char *console_command_refusal(PlayerNumber plyr_idx, const struct ConsoleCommand *entry)
 {

@@ -165,7 +165,7 @@ TbBool detonate_shot(struct Thing *shotng, TbBool destroy)
         {
             power_level = SPELL_MAX_LEVEL;
         }
-        magic_use_power_direct(shotng->owner, PwrK_DESTRWALLS, power_level, shotng->mappos.x.stl.num, shotng->mappos.y.stl.num,INVALID_THING, PwMod_CastForFree);
+        magic_use_power_direct(shotng->owner, NO_USER,PwrK_DESTRWALLS, power_level, shotng->mappos.x.stl.num, shotng->mappos.y.stl.num,INVALID_THING, PwMod_CastForFree);
         break;
     default:
         break;
@@ -792,6 +792,7 @@ long shot_kill_object(struct Thing *shotng, struct Thing *target)
         struct Dungeon* dungeon = get_players_num_dungeon(shotng->owner);
         if (!dungeon_invalid(dungeon)) {
             dungeon->lvstats.keepers_destroyed++;
+            dungeon->lvstats.keeper_destroyed[ALL_PLAYERS]++;
             dungeon->lvstats.keeper_destroyed[target->owner]++;
         }
         return 1;
@@ -1636,7 +1637,7 @@ TngUpdateRet move_shot(struct Thing *shotng)
 
 static TbBool lightning_is_close_to_player(struct PlayerInfo *player, struct Coord3d *pos)
 {
-    return get_chessboard_distance(&get_local_active_camera(player)->mappos, pos) < subtile_coord(45,0);
+    return get_chessboard_distance(&get_local_active_camera()->mappos, pos) < subtile_coord(45,0);
 }
 
 static void affect_nearby_friends_with_alarm(struct Thing *traptng)
@@ -1801,7 +1802,7 @@ TngUpdateRet update_shot(struct Thing *thing)
                       if ((thing->parent_idx > 0) && (get_local_user_state()->controlled_thing_idx == thing->parent_idx))
                       {
                           PaletteSetUserPalette(get_local_user(), lightning_palette);
-                          get_user_state(get_local_user())->additional_flags |= UsrAF_LightningPaletteIsActive;
+                          local_state.lightning_palette_active = true;
                       }
                   }
                 }
